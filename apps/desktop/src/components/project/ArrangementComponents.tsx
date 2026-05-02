@@ -735,7 +735,18 @@ function LaneClip({ track, selectedProjectId, deleteTrack, trackZoom, laneWidth,
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   useEffect(() => {
     if (!menu) return;
-    const onDown = () => setMenu(null);
+    // Window-level mousedown closes the menu when the click is
+    // OUTSIDE the menu. Without the data-attribute check here, the
+    // native event reached window before React fired the menu
+    // item's click handler — closing the menu unmounted the button
+    // and the Duplicate / Delete clicks silently dropped. React's
+    // own onMouseDown stopPropagation on the menu element only
+    // stops the synthetic event, not native bubbling.
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('[data-clip-context-menu]')) return;
+      setMenu(null);
+    };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenu(null); };
     window.addEventListener('mousedown', onDown);
     window.addEventListener('keydown', onKey);
@@ -1109,6 +1120,7 @@ function LaneClip({ track, selectedProjectId, deleteTrack, trackZoom, laneWidth,
     </div>
     {menu && (
       <div
+        data-clip-context-menu
         onMouseDown={(e) => e.stopPropagation()}
         className="fixed z-50 min-w-[180px] rounded-md py-1 shadow-[0_8px_24px_rgba(0,0,0,0.5)] backdrop-blur-md"
         style={{
