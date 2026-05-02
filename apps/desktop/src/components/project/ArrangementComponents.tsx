@@ -763,8 +763,29 @@ function LaneClip({ track, selectedProjectId, deleteTrack, trackZoom, laneWidth,
       const srcTrack = projectTracks.find((t: any) => t.id === id);
       if (!srcTrack?.fileId) continue;
       const loaded = loadedTracks.get(id);
-      const clipDuration = loaded?.buffer?.duration || 0;
-      const rawOffset = (loaded?.startOffset ?? 0) + clipDuration;
+      // Compute the duplicate's drop position from the AUDIBLE clip
+      // length, not the raw buffer length. With pitch ≠ 0 the buffer
+      // is pre-stretched (so buffer.duration ≠ audible length), and
+      // trim moves the visual end inward — both used to make
+      // duplicate either land mid-clip or stack right on top, which
+      // is why the user had to click multiple times before a take
+      // actually appeared after the source.
+      let clipDur = 0;
+      if (loaded?.buffer) {
+        const bufDur = loaded.buffer.duration;
+        const tStart = loaded.trimStart || 0;
+        const tEnd = loaded.trimEnd > 0 ? loaded.trimEnd : bufDur;
+        const rate = Math.pow(2, (loaded.pitch || 0) / 12);
+        clipDur = Math.max(0, (tEnd - tStart) / rate);
+      }
+      if (clipDur <= 0) {
+        // Source audio still loading. Skip rather than stacking the
+        // duplicate at the source's offset (which is what made the
+        // first few right-click → Duplicate clicks feel like no-ops).
+        if (typeof console !== 'undefined') console.warn('[duplicate] source clip buffer not loaded yet — try again in a moment');
+        continue;
+      }
+      const rawOffset = (loaded?.startOffset ?? 0) + clipDur;
       const newOffset = Math.max(0, snapToGrid(rawOffset, projectBpm, grid, 'nearest'));
       const result = await api.addTrack(selectedProjectId, {
         name: srcTrack.name || 'Track', type: srcTrack.type || 'audio',
