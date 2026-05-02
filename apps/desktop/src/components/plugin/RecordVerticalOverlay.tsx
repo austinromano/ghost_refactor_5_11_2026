@@ -353,6 +353,14 @@ export default function RecordVerticalOverlay({ open, onClose }: Props) {
   // preview panel and the MediaRecorder feed. Stored in a ref so
   // beginRecording() can find it after chooseWindow() finished.
   const canvasStreamRef = useRef<MediaStream | null>(null);
+  // Compositor RAF throttling. The drawFrame closure is stored in a
+  // ref so beginRecording() can kick the loop after chooseWindow()
+  // built it. lastFrameTimeRef keeps a rolling timestamp so we
+  // sleep between frames instead of redrawing on every display
+  // refresh — see drawFrame for rationale.
+  const drawFrameFnRef = useRef<(() => void) | null>(null);
+  const lastFrameTimeRef = useRef<number>(0);
+  const COMPOSITOR_FRAME_MS = 1000 / 30;
 
   // <video> elements feed the canvas compositor. The "preview" video
   // is what the user sees in the overlay before recording starts —
@@ -421,9 +429,15 @@ export default function RecordVerticalOverlay({ open, onClose }: Props) {
   // default before they explicitly pick something else (e.g. their
   // iPhone via Continuity Camera).
   async function acquireCameraStream(deviceId: string | null): Promise<MediaStream> {
+    // Cap the camera hard at 720p / 30 fps using `max` constraints
+    // (rather than `ideal`) so high-quality phones / external cams
+    // like the DJI Osmo Pocket don't try to deliver 4K @ 60 fps.
+    // Decoding and copying those frames every RAF tick was starving
+    // the audio thread and causing DAW lag.
     const video: MediaTrackConstraints = {
-      width: { ideal: 1280 },
-      height: { ideal: 720 },
+      width: { max: 1280, ideal: 1280 },
+      height: { max: 720, ideal: 720 },
+      frameRate: { max: 30, ideal: 30 },
     };
     if (deviceId) {
       video.deviceId = { exact: deviceId };
@@ -471,7 +485,10 @@ export default function RecordVerticalOverlay({ open, onClose }: Props) {
     recorderRef.current = null;
     // Cancel compositor.
     if (rafIdRef.current != null) {
+      // Either an animation frame ID or a setTimeout ID — both
+      // cancel safely on either API for non-matching values.
       cancelAnimationFrame(rafIdRef.current);
+      clearTimeout(rafIdRef.current);
       rafIdRef.current = null;
     }
     if (recordTimerRef.current != null) {
@@ -669,28 +686,57 @@ export default function RecordVerticalOverlay({ open, onClose }: Props) {
       // image-load step, no async race; just pure canvas paths so the
       // mark is always crisp at 1080×1920.
       drawWatermark(ctx2d);
-      rafIdRef.current = requestAnimationFrame(drawFrame);
+      // Throttle the compositor to ~30 fps so heavy frames (1080×
+      // 1920 with two drawImage strips + watermark paths) don't
+      // hog the main thread at the display's full 60 / 120 Hz
+      // refresh — that competition was visibly stalling the audio
+      // engine when an external camera was in use.
+      const now = performance.now();
+      const wait = Math.max(0, lastFrameTimeRef.current + COMPOSITOR_FRAME_MS - now);
+      if (wait < 1) {
+        lastFrameTimeRef.current = now;
+        rafIdRef.current = requestAnimationFrame(drawFrame);
+      } else {
+        rafIdRef.current = window.setTimeout(() => {
+          lastFrameTimeRef.current = performance.now();
+          rafIdRef.current = requestAnimationFrame(drawFrame);
+        }, wait) as unknown as number;
+      }
     };
-    rafIdRef.current = requestAnimationFrame(drawFrame);
+    drawFrameFnRef.current = drawFrame;
 
-    canvasStreamRef.current = canvas.captureStream(30);
     setPhase('ready_to_record');
   }
 
   function stopCompositor() {
     if (rafIdRef.current != null) {
+      // Either an animation frame ID or a setTimeout ID — both
+      // cancel safely on either API for non-matching values.
       cancelAnimationFrame(rafIdRef.current);
+      clearTimeout(rafIdRef.current);
       rafIdRef.current = null;
     }
+    drawFrameFnRef.current = null;
     canvasStreamRef.current = null;
   }
 
-  // Step 2 — actually start the recording. Compositor must already
-  // be running (chooseWindow has set phase = ready_to_record).
+  // Step 2 — actually start the recording. The compositor RAF was
+  // BUILT in chooseWindow but not kicked yet (we don't want
+  // heavy 1080×1920 drawing competing with the audio thread while
+  // the user is just previewing). Kick it now, capture the canvas
+  // stream, and pipe it into MediaRecorder.
   function beginRecording() {
-    const canvasStream = canvasStreamRef.current;
-    if (!canvasStream) return;
+    const canvas = canvasRef.current;
+    const draw = drawFrameFnRef.current;
+    if (!canvas || !draw) return;
     chunksRef.current = [];
+
+    if (!canvasStreamRef.current) {
+      canvasStreamRef.current = canvas.captureStream(30);
+    }
+    const canvasStream = canvasStreamRef.current;
+    lastFrameTimeRef.current = performance.now();
+    rafIdRef.current = requestAnimationFrame(draw);
 
     const audioTrack = tapMasterAudio();
     const tracks: MediaStreamTrack[] = [...canvasStream.getVideoTracks()];
