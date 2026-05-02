@@ -1539,7 +1539,10 @@ export const useAudioStore = create<AudioState>((set, get) => {
           existing.volume = clip.volume;
           existing.muted = clip.muted;
           existing.soloed = clip.soloed;
-          existing.pitch = clip.pitch;
+          // pitch / warp / bpm assignments deferred — see the
+          // change-detection block below. Assigning pitch here
+          // (the previous bug) made the pitchChanged compare equal
+          // to itself, so the buffer never re-stretched on reload.
           existing.pan = (clip as any).pan ?? 0;
           existing.busSend = (clip as any).busSend ?? 0;
           if (existing.busSendNode) {
@@ -1565,13 +1568,16 @@ export const useAudioStore = create<AudioState>((set, get) => {
           // Warp / BPM override / pitch can all change in a remote update.
           // Detect any of them shifting and rebuild the playback buffer
           // through composePlayBuffer so the combined warp + pitch stretch
-          // is always consistent.
+          // is always consistent. Compares OLD existing values vs the
+          // incoming clip — assignments happen AFTER the diff so the
+          // change flags are accurate.
           const incomingWarp = clip.warp !== false;
           const warpChanged = incomingWarp !== (existing.warp !== false);
           const bpmChanged = !!clip.bpm && clip.bpm > 0 && clip.bpm !== existing.bpm;
           const pitchChanged = (clip.pitch ?? 0) !== (existing.pitch ?? 0);
           if (warpChanged) existing.warp = incomingWarp;
           if (bpmChanged) existing.bpm = clip.bpm;
+          if (pitchChanged) existing.pitch = clip.pitch;
           if ((warpChanged || bpmChanged || pitchChanged) && existing.originalBuffer) {
             if (existing.source) safeStop(existing.source);
             if (existing.gainNode) { try { existing.gainNode.disconnect(); } catch { /* ignore */ } }
