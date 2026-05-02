@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { motion, useDragControls } from 'framer-motion';
 import { useDrumRack, type DrumRow } from '../../stores/drumRackStore';
 import { useAudioStore } from '../../stores/audioStore';
 import { audioBufferCache, getAudioData } from '../../lib/audio';
@@ -38,6 +39,17 @@ export default function DrumRackPanel({ projectId }: { projectId: string }) {
   // clickable + draggable regardless of brush state. Brush only
   // controls the single → triplet conversion.
   const [tripletBrush, setTripletBrush] = useState(false);
+  // Floating mode — when ON the panel detaches from the
+  // arrangement column and renders as a fixed-position window the
+  // user can drag anywhere. Persisted in localStorage so the
+  // popped-out state survives a refresh.
+  const [floating, setFloating] = useState(() => {
+    try { return localStorage.getItem('ghost_drum_rack_float') === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('ghost_drum_rack_float', floating ? '1' : '0'); } catch { /* ignore */ }
+  }, [floating]);
+  const dragControls = useDragControls();
   const clearClip = useDrumRack((s) => s.clearClip);
   const setPatternSteps = useDrumRack((s) => s.setPatternSteps);
   const createClipAt = useDrumRack((s) => s.createClipAt);
@@ -175,20 +187,33 @@ export default function DrumRackPanel({ projectId }: { projectId: string }) {
     );
   }
 
-  return (
-    <div className="shrink-0 mt-2 rounded-2xl glass overflow-hidden flex flex-col" style={{ maxHeight: 360 }}>
+  // Inner panel — same UI whether docked or floating. Wrapped below
+  // by either the original arrangement-column container (docked) or
+  // a fixed-position framer drag container (floating).
+  const panelInner = (
+    <div
+      className={`${floating ? '' : 'shrink-0 mt-2 '}rounded-2xl glass overflow-hidden flex flex-col`}
+      style={{ maxHeight: 360, ...(floating ? { width: '100%', height: '100%' } : {}) }}
+    >
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-white/[0.06]">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ghost-green">
-          <rect x="3" y="3" width="6" height="6" rx="1" /><rect x="15" y="3" width="6" height="6" rx="1" />
-          <rect x="3" y="15" width="6" height="6" rx="1" /><rect x="15" y="15" width="6" height="6" rx="1" />
-        </svg>
-        <span className="text-[12px] font-semibold text-white/85">Drum Rack</span>
-        <span className="text-[10px] text-white/40">
-          {selectedClip
-            ? `— editing clip @ ${selectedClip.startSec.toFixed(2)}s · ${selectedClip.lengthSec.toFixed(2)}s long`
-            : '— no clip selected'}
-        </span>
+        <div
+          className="flex items-center gap-2"
+          onPointerDown={floating ? (e) => { if (e.button === 0) dragControls.start(e); } : undefined}
+          style={{ cursor: floating ? 'grab' : 'default', touchAction: floating ? 'none' : undefined, userSelect: 'none' }}
+          title={floating ? 'Drag to move' : undefined}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ghost-green">
+            <rect x="3" y="3" width="6" height="6" rx="1" /><rect x="15" y="3" width="6" height="6" rx="1" />
+            <rect x="3" y="15" width="6" height="6" rx="1" /><rect x="15" y="15" width="6" height="6" rx="1" />
+          </svg>
+          <span className="text-[12px] font-semibold text-white/85">Drum Rack</span>
+          <span className="text-[10px] text-white/40">
+            {selectedClip
+              ? `— editing clip @ ${selectedClip.startSec.toFixed(2)}s · ${selectedClip.lengthSec.toFixed(2)}s long`
+              : '— no clip selected'}
+          </span>
+        </div>
         <div className="ml-auto flex items-center gap-1 text-[10px]">
           <button
             onClick={handleAddClip}
@@ -244,6 +269,25 @@ export default function DrumRackPanel({ projectId }: { projectId: string }) {
             + Row
           </button>
           <button
+            onClick={() => setFloating((v) => !v)}
+            className={`px-2 py-0.5 rounded ${floating ? 'bg-ghost-green/20 text-ghost-green' : 'text-white/50 hover:bg-white/[0.06] hover:text-white'}`}
+            title={floating ? 'Dock back into the arrangement' : 'Pop out as a floating window — drag anywhere'}
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              {floating ? (
+                <>
+                  <path d="M9 9l-5 5M4 14h5v-5" />
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                </>
+              ) : (
+                <>
+                  <path d="M15 3h6v6M21 3l-7 7" />
+                  <path d="M9 21H3v-6M3 21l7-7" />
+                </>
+              )}
+            </svg>
+          </button>
+          <button
             onClick={() => setOpen(false)}
             className="px-2 py-0.5 rounded text-white/40 hover:bg-white/[0.06] hover:text-white"
             title="Close"
@@ -284,6 +328,37 @@ export default function DrumRackPanel({ projectId }: { projectId: string }) {
       </div>
     </div>
   );
+
+  // Floating mode: wrap the panel in a fixed-position framer-motion
+  // container so the user can drag it anywhere on the page. Drag is
+  // gated to the title-area pointerDown via dragControls, so clicks
+  // on the action buttons in the header (record, +Clip, 16/32, etc.)
+  // and the step grid below stay free of drag interference.
+  if (floating) {
+    return (
+      <motion.div
+        drag
+        dragMomentum={false}
+        dragElastic={0.04}
+        dragControls={dragControls}
+        dragListener={false}
+        className="fixed z-[60]"
+        style={{
+          top: 96,
+          left: 'calc(50vw - 460px)',
+          width: 920,
+          maxWidth: 'calc(100vw - 32px)',
+          height: 360,
+          boxShadow: '0 20px 60px rgba(0,0,0,0.55), 0 0 0 1px rgba(168,134,255,0.18)',
+          borderRadius: 16,
+        }}
+      >
+        {panelInner}
+      </motion.div>
+    );
+  }
+
+  return panelInner;
 }
 
 // ── Single row ───────────────────────────────────────────────────────────
