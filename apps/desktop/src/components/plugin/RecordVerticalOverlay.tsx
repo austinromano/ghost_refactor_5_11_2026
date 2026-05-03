@@ -385,7 +385,20 @@ export default function RecordVerticalOverlay({ open, onClose }: Props) {
 
     (async () => {
       try {
-        const stream = await acquireCameraStream(selectedCameraId);
+        // Try the saved deviceId first. If it fails (most common
+        // cause: the saved camera — e.g. iPhone via Continuity
+        // Camera — isn't connected anymore so getUserMedia throws
+        // OverconstrainedError), drop the stale id and retry with
+        // the default camera before showing an error.
+        let stream: MediaStream;
+        try {
+          stream = await acquireCameraStream(selectedCameraId);
+        } catch (firstErr) {
+          if (!selectedCameraId) throw firstErr;
+          try { localStorage.removeItem('ghost_record_camera_id'); } catch { /* ignore */ }
+          if (!cancelled) setSelectedCameraId(null);
+          stream = await acquireCameraStream(null);
+        }
         if (cancelled) {
           for (const t of stream.getTracks()) try { t.stop(); } catch { /* ignore */ }
           return;
