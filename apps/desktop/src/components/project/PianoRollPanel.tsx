@@ -72,16 +72,18 @@ const SNAP_OPTIONS: Array<{ label: string; div: number }> = [
   { label: 'Off', div: 0 },
 ];
 
-// FL-style color tokens — kept inline because they're tightly coupled
-// to the piano roll's visual identity. Other parts of the app use
-// the shared token system.
-const COLOR_BG = '#2A3848';
-const COLOR_BG_BLACKROW = 'rgba(0,0,0,0.18)';
-const COLOR_GRID_LINE = 'rgba(255,255,255,0.05)';
-const COLOR_GRID_BAR = 'rgba(255,255,255,0.18)';
+// Color tokens for the piano roll — tuned to match Ghost Session's
+// dark purple-black body. Slightly lighter than the app body so the
+// panel reads as a contained surface; black-key rows go darker with
+// a strong overlay so pitch positions are still readable on the
+// already-dark base.
+const COLOR_BG = '#120822';
+const COLOR_BG_BLACKROW = 'rgba(0,0,0,0.40)';
+const COLOR_GRID_LINE = 'rgba(255,255,255,0.04)';
+const COLOR_GRID_BAR = 'rgba(255,255,255,0.16)';
 const COLOR_GRID_C = 'rgba(255,255,255,0.10)';
-const COLOR_HEADER = '#1F2A38';
-const COLOR_RULER = '#1A2330';
+const COLOR_HEADER = '#0E0620';
+const COLOR_RULER = '#0B0518';
 
 interface Props {
   projectId: string;
@@ -639,7 +641,7 @@ export default function PianoRollPanel({ projectId }: Props) {
         <div className="flex shrink-0" style={{ height: VELOCITY_HEIGHT }}>
           <div
             className="shrink-0 flex items-center justify-end pr-2"
-            style={{ width: KEYBOARD_WIDTH, background: '#1F2A38', borderRight: '1px solid rgba(0,0,0,0.5)', borderTop: '1px solid rgba(0,0,0,0.55)' }}
+            style={{ width: KEYBOARD_WIDTH, background: COLOR_HEADER, borderRight: '1px solid rgba(0,0,0,0.55)', borderTop: '1px solid rgba(0,0,0,0.65)' }}
           >
             <span className="text-[9px] font-mono text-white/40 uppercase tracking-wider">vel</span>
           </div>

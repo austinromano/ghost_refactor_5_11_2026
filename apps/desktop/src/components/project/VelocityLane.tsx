@@ -75,9 +75,9 @@ export default function VelocityLane({ clipId, notes, selectedNoteIds, pixelsPer
       style={{
         width,
         height,
-        background: '#243140',
-        borderTop: '1px solid rgba(0,0,0,0.55)',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+        background: '#0B0518',
+        borderTop: '1px solid rgba(0,0,0,0.65)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03)',
       }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -94,7 +94,7 @@ export default function VelocityLane({ clipId, notes, selectedNoteIds, pixelsPer
         const stemTop = (1 - n.velocity) * height;
         const stemHeight = height - stemTop;
         const isSel = selectedNoteIds.has(n.id);
-        const stemColor = isSel ? '#B8F0CB' : '#84D9A2';
+        const stemColor = isSel ? '#A855F7' : '#7C3AED';
         return (
           <div key={n.id} className="absolute pointer-events-none" style={{ left: x - 1, top: stemTop, width: 2, height: stemHeight }}>
             {/* Stem */}
