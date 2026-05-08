@@ -39,6 +39,7 @@ import MasterBusLane from '../project/MasterBusLane';
 import ArrangementComments from '../project/ArrangementComments';
 import SampleEditorPanel from '../project/SampleEditorPanel';
 import DrumRackPanel from '../project/DrumRackPanel';
+import PianoRollPanel, { PianoRollOpenButton } from '../project/PianoRollPanel';
 import SamplePackContentView from './SamplePackContentView';
 import AddFriendPopover from './AddFriendPopover';
 import ProjectHeaderBar from './ProjectHeaderBar';
@@ -1051,6 +1052,8 @@ export default function PluginLayout() {
                           </ArrangementDropZone>
                           <SampleEditorPanel projectId={selectedProjectId!} />
                           <DrumRackPanel projectId={selectedProjectId!} />
+                          <PianoRollPanel projectId={selectedProjectId!} />
+                          <PianoRollOpenButton />
                         </div>
                       </div>
                     </div>
