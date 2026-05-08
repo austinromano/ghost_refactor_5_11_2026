@@ -2,11 +2,10 @@ import { useRef, useCallback } from 'react';
 import type { MidiNote } from '../../stores/midiTrackStore';
 import { useMidiTrack } from '../../stores/midiTrackStore';
 
-// Velocity lane below the piano roll grid. One vertical bar per note,
-// height = velocity * laneHeight. Drag a bar's top to set its
-// velocity; matches Ableton's behavior. Selected notes get the
-// brighter chip color so the user can see which bars belong to a
-// multi-selection.
+// Velocity lane below the piano roll grid. FL-Studio style: each note
+// is a thin vertical "stem" rising from the bottom of the lane to
+// (1 - velocity * height), capped with a small filled circle. Drag the
+// circle (or anywhere along the stem's column) to set velocity.
 
 interface Props {
   clipId: string;
@@ -14,38 +13,44 @@ interface Props {
   selectedNoteIds: Set<string>;
   pixelsPerSecond: number;
   height: number;
+  // Velocity lane scrolls with the grid horizontally. We render it
+  // as a wide div inside an externally-managed scroll container so
+  // its left edge always tracks the grid's scroll offset.
+  width: number;
 }
 
-const BAR_WIDTH = 4;
+const HIT_RADIUS = 6; // px column tolerance for picking the closest stem
 
-export default function VelocityLane({ clipId, notes, selectedNoteIds, pixelsPerSecond, height }: Props) {
+export default function VelocityLane({ clipId, notes, selectedNoteIds, pixelsPerSecond, height, width }: Props) {
   const setVelocity = useMidiTrack((s) => s.setNoteVelocity);
   const ref = useRef<HTMLDivElement>(null);
-  // Track which note we're scrubbing so a drag past the bar's column
-  // keeps editing the same note (matches Ableton — the velocity drag
-  // doesn't snap to a different bar mid-gesture).
+  // Keep editing the same note across the whole drag — once a stem
+  // is picked, the user can move the pointer freely without snapping
+  // to a different stem mid-gesture.
   const scrubbingRef = useRef<string | null>(null);
 
-  const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (!ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    // Find the closest note bar under the pointer. Use a generous hit
-    // radius (BAR_WIDTH + 2) so single-pixel hits aren't fiddly.
+  const pickAt = useCallback((x: number): MidiNote | null => {
     let pick: MidiNote | null = null;
     let bestDist = Infinity;
     for (const n of notes) {
       const bx = n.startSec * pixelsPerSecond;
       const d = Math.abs(x - bx);
-      if (d < bestDist && d <= BAR_WIDTH + 4) { bestDist = d; pick = n; }
+      if (d < bestDist && d <= HIT_RADIUS) { bestDist = d; pick = n; }
     }
+    return pick;
+  }, [notes, pixelsPerSecond]);
+
+  const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const pick = pickAt(x);
     if (!pick) return;
     scrubbingRef.current = pick.id;
     e.currentTarget.setPointerCapture(e.pointerId);
-    // Map y → velocity. y=0 is top (max velocity), y=height is bottom.
     const v = Math.max(0, Math.min(1, 1 - (e.clientY - rect.top) / height));
     setVelocity(clipId, pick.id, v);
-  }, [notes, pixelsPerSecond, height, clipId, setVelocity]);
+  }, [pickAt, height, clipId, setVelocity]);
 
   const onPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!scrubbingRef.current || !ref.current) return;
@@ -61,32 +66,59 @@ export default function VelocityLane({ clipId, notes, selectedNoteIds, pixelsPer
     scrubbingRef.current = null;
   }, []);
 
+  // Background grid: thin horizontal mid-line at 50% velocity makes
+  // it easy to eyeball whether a note is above or below the default.
   return (
     <div
       ref={ref}
-      className="relative w-full select-none cursor-ns-resize"
-      style={{ height, background: 'rgba(0,0,0,0.25)', borderTop: '1px solid rgba(255,255,255,0.06)' }}
+      className="relative select-none cursor-ns-resize"
+      style={{
+        width,
+        height,
+        background: '#243140',
+        borderTop: '1px solid rgba(0,0,0,0.55)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+      }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
     >
+      {/* Mid-line at 50% velocity — pure visual reference. */}
+      <div
+        className="absolute left-0 right-0 pointer-events-none"
+        style={{ top: height / 2, height: 1, background: 'rgba(255,255,255,0.04)' }}
+      />
       {notes.map((n) => {
-        const left = n.startSec * pixelsPerSecond;
-        const barH = n.velocity * height;
+        const x = n.startSec * pixelsPerSecond;
+        const stemTop = (1 - n.velocity) * height;
+        const stemHeight = height - stemTop;
         const isSel = selectedNoteIds.has(n.id);
+        const stemColor = isSel ? '#B8F0CB' : '#84D9A2';
         return (
-          <div
-            key={n.id}
-            className="absolute bottom-0 pointer-events-none"
-            style={{
-              left,
-              width: BAR_WIDTH,
-              height: barH,
-              background: isSel ? 'rgba(168,85,247,0.95)' : 'rgba(124,58,237,0.7)',
-              borderTop: '1px solid rgba(255,255,255,0.6)',
-            }}
-          />
+          <div key={n.id} className="absolute pointer-events-none" style={{ left: x - 1, top: stemTop, width: 2, height: stemHeight }}>
+            {/* Stem */}
+            <div
+              className="absolute left-0 top-0 w-full h-full"
+              style={{ background: stemColor, opacity: 0.85 }}
+            />
+            {/* Lollipop head — small filled circle at the top of the
+                stem. Sits 3px tall * 6px wide so it reads as a circle
+                without overlapping neighbouring stems. */}
+            <div
+              className="absolute"
+              style={{
+                left: -2,
+                top: -3,
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: stemColor,
+                border: '1px solid rgba(0,0,0,0.55)',
+                boxShadow: isSel ? '0 0 4px rgba(184,240,203,0.6)' : 'none',
+              }}
+            />
+          </div>
         );
       })}
     </div>

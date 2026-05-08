@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { useMidiTrack, type MidiNote } from '../../stores/midiTrackStore';
+import { useMidiTrack } from '../../stores/midiTrackStore';
 import { useAudioStore } from '../../stores/audioStore';
 import { audioBufferCache, getAudioData } from '../../lib/audio';
 import { api } from '../../lib/api';
@@ -10,61 +10,27 @@ import PianoRollNote from './PianoRollNote';
 import VelocityLane from './VelocityLane';
 import { SAMPLE_LIBRARY_DRAG_MIME } from '../layout/SampleLibrarySection';
 
-// Piano-roll panel. Sits at the bottom of the arrangement column,
-// parallel to DrumRackPanel. v1 manages its own internal MIDI track
-// list — full project-track integration lands in phase 4 alongside
-// arrangement-timeline rendering.
+// Piano-roll panel — FL-Studio styled. Sits at the bottom of the
+// arrangement column, parallel to DrumRackPanel. v1 manages its own
+// internal MIDI track list; project-track integration lands in
+// phase 4 alongside arrangement-timeline rendering.
 //
-// Interactions wired in this build:
-//   - Click empty grid → paint a new note at click position. Drag
-//     before mouseup to set initial duration.
-//   - Click existing note → select that note (others deselect).
-//   - Shift-click existing note → toggle in multi-selection.
-//   - Drag note body → move (pitch + time, both snap to grid).
-//   - Drag rightmost ~6px of note → resize duration.
-//   - Delete / Backspace → remove every selected note.
-//   - Right-click note → delete that note (no selection needed).
-//   - Drop audio file / sample-library item on the track header
-//     → set the track's instrument (sample to pitch-shift).
+// Layout:
+//   resize-handle 4px
+//   header        36px      (sample drop + base note + snap + close)
+//   ruler-row     22px      (bar numbers, scrolls with grid horizontally)
+//   grid-area     flex      (keyboard left, notes right; both scroll v+h)
+//   velocity-row  70px      (lollipop velocity, scrolls with grid h)
 //
-// Phase 3 will add: marquee select, copy/paste, transpose w/ arrow
-// keys, multi-track switching.
-
-const DEFAULT_TRACK_ID = 'midi-track-1';
-const DEFAULT_CLIP_LENGTH_BARS = 4;
-const PITCH_HEIGHT = 14;             // px per semitone
-const KEYBOARD_WIDTH = 60;
-const HEADER_HEIGHT = 36;
-const VELOCITY_HEIGHT = 70;
-const PIXELS_PER_BAR = 200;
-const SNAP_OPTIONS: Array<{ label: string; div: number }> = [
-  { label: '1/4', div: 4 },
-  { label: '1/8', div: 8 },
-  { label: '1/16', div: 16 },
-  { label: '1/32', div: 32 },
-  { label: 'Off', div: 0 },
-];
-
-interface Props {
-  projectId: string;
-}
-
-type DragState =
-  | { kind: 'idle' }
-  | { kind: 'paint'; noteId: string; startX: number; pitch: number }
-  | { kind: 'move'; noteIds: string[]; originX: number; originY: number; originStarts: Map<string, number>; originPitches: Map<string, number> }
-  | { kind: 'resize'; noteId: string; originX: number; originDuration: number };
+// The three horizontally-scrolling rows (ruler, grid, velocity) sync
+// their scrollLeft so the bars stay aligned at every column. Vertical
+// scroll lives inside grid-area only — the velocity lane is anchored
+// to the bottom regardless of pitch scroll.
 
 /**
- * Floating toggle button that opens the piano roll panel. Renders only
- * while the panel is closed so the two pieces don't visually fight —
- * the panel itself owns the ✕ to close. Sits in the bottom-right corner
- * of the arrangement column so it's discoverable without occupying any
- * permanent UI space.
- *
- * Phase 4 will replace this with proper MIDI-track / MIDI-clip entry
- * points in the arrangement (clicking a MIDI clip opens the roll, just
- * like clicking a drum clip opens the rack today).
+ * Floating toggle button that opens the piano roll panel. Renders
+ * only while the panel is closed so the two pieces don't visually
+ * fight — the panel itself owns the ✕ to close.
  */
 export function PianoRollOpenButton() {
   const open = useMidiTrack((s) => s.open);
@@ -89,6 +55,44 @@ export function PianoRollOpenButton() {
   );
 }
 
+const DEFAULT_TRACK_ID = 'midi-track-1';
+const DEFAULT_CLIP_LENGTH_BARS = 4;
+const PITCH_HEIGHT = 14;
+const KEYBOARD_WIDTH = 60;
+const HEADER_HEIGHT = 36;
+const RULER_HEIGHT = 22;
+const VELOCITY_HEIGHT = 70;
+const PIXELS_PER_BAR = 200;
+const BLACK_KEY_PITCHES = new Set([1, 3, 6, 8, 10]);
+const SNAP_OPTIONS: Array<{ label: string; div: number }> = [
+  { label: '1/4', div: 4 },
+  { label: '1/8', div: 8 },
+  { label: '1/16', div: 16 },
+  { label: '1/32', div: 32 },
+  { label: 'Off', div: 0 },
+];
+
+// FL-style color tokens — kept inline because they're tightly coupled
+// to the piano roll's visual identity. Other parts of the app use
+// the shared token system.
+const COLOR_BG = '#2A3848';
+const COLOR_BG_BLACKROW = 'rgba(0,0,0,0.18)';
+const COLOR_GRID_LINE = 'rgba(255,255,255,0.05)';
+const COLOR_GRID_BAR = 'rgba(255,255,255,0.18)';
+const COLOR_GRID_C = 'rgba(255,255,255,0.10)';
+const COLOR_HEADER = '#1F2A38';
+const COLOR_RULER = '#1A2330';
+
+interface Props {
+  projectId: string;
+}
+
+type DragState =
+  | { kind: 'idle' }
+  | { kind: 'paint'; noteId: string; startX: number; pitch: number }
+  | { kind: 'move'; noteIds: string[]; originX: number; originY: number; originStarts: Map<string, number>; originPitches: Map<string, number> }
+  | { kind: 'resize'; noteId: string; originX: number; originDuration: number };
+
 export default function PianoRollPanel({ projectId }: Props) {
   const open = useMidiTrack((s) => s.open);
   const setOpen = useMidiTrack((s) => s.setOpen);
@@ -103,7 +107,6 @@ export default function PianoRollPanel({ projectId }: Props) {
   const setBaseNote = useMidiTrack((s) => s.setBaseNote);
   const createClipAt = useMidiTrack((s) => s.createClipAt);
   const selectClip = useMidiTrack((s) => s.selectClip);
-  const deleteClip = useMidiTrack((s) => s.deleteClip);
   const addNote = useMidiTrack((s) => s.addNote);
   const deleteNotes = useMidiTrack((s) => s.deleteNotes);
   const moveNote = useMidiTrack((s) => s.moveNote);
@@ -133,9 +136,6 @@ export default function PianoRollPanel({ projectId }: Props) {
   }, [isPlaying, projectId, startScheduler, stopScheduler]);
 
   // --- Default track + clip ----------------------------------------
-  // First time the panel opens, make sure there's a track and a clip
-  // to edit. Without this the user clicks "open" and sees an empty
-  // panel with no obvious action.
   useEffect(() => {
     if (!open) return;
     ensureInstrument(DEFAULT_TRACK_ID);
@@ -158,8 +158,6 @@ export default function PianoRollPanel({ projectId }: Props) {
   const instrument = selectedClip ? instruments[selectedClip.trackId] : undefined;
 
   // --- Geometry ----------------------------------------------------
-  // Pitch range — show a 4-octave window centered on C3..C5. User can
-  // scroll the grid container vertically to see other ranges.
   const lowPitch = 24;   // C1
   const highPitch = 96;  // C7
   const totalPitches = highPitch - lowPitch + 1;
@@ -168,6 +166,7 @@ export default function PianoRollPanel({ projectId }: Props) {
   const barSec = 240 / projectBpm;
   const pixelsPerSecond = PIXELS_PER_BAR / barSec;
   const clipLengthSec = selectedClip?.lengthSec ?? 0;
+  const clipBars = Math.max(1, Math.ceil(clipLengthSec / barSec));
   const gridWidth = Math.max(800, clipLengthSec * pixelsPerSecond);
 
   // --- Selection + drag --------------------------------------------
@@ -175,6 +174,8 @@ export default function PianoRollPanel({ projectId }: Props) {
   const [snapDiv, setSnapDiv] = useState(16);
   const dragRef = useRef<DragState>({ kind: 'idle' });
   const gridRef = useRef<HTMLDivElement>(null);
+  const rulerRef = useRef<HTMLDivElement>(null);
+  const velocityRef = useRef<HTMLDivElement>(null);
 
   const snap = useCallback((sec: number): number => {
     if (snapDiv <= 0) return Math.max(0, sec);
@@ -182,12 +183,25 @@ export default function PianoRollPanel({ projectId }: Props) {
     return Math.max(0, Math.round(sec / stepSec) * stepSec);
   }, [snapDiv, barSec]);
 
-  // Translate (x, y) within the grid to (timeSec, pitch).
   const xyToNote = useCallback((x: number, y: number) => {
     const sec = x / pixelsPerSecond;
     const pitch = highPitch - Math.floor(y / PITCH_HEIGHT);
     return { sec, pitch };
   }, [pixelsPerSecond, highPitch]);
+
+  // Sync horizontal scroll across the three rows (ruler / grid /
+  // velocity). The grid is the source of truth — when it scrolls
+  // horizontally we mirror its scrollLeft to the other two.
+  const onGridScroll = useCallback(() => {
+    if (!gridRef.current) return;
+    const sl = gridRef.current.scrollLeft;
+    if (rulerRef.current && rulerRef.current.scrollLeft !== sl) {
+      rulerRef.current.scrollLeft = sl;
+    }
+    if (velocityRef.current && velocityRef.current.scrollLeft !== sl) {
+      velocityRef.current.scrollLeft = sl;
+    }
+  }, []);
 
   // --- Grid mouse handlers ----------------------------------------
   const onGridMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -199,10 +213,8 @@ export default function PianoRollPanel({ projectId }: Props) {
     const noteId = target.dataset.noteId;
 
     if (noteId) {
-      // Click on existing note — select / move / resize.
       const note = selectedClip.notes.find((n) => n.id === noteId);
       if (!note) return;
-      // Right-click anywhere on a note → delete.
       if (e.button === 2) {
         e.preventDefault();
         deleteNotes(selectedClip.id, [noteId]);
@@ -212,29 +224,20 @@ export default function PianoRollPanel({ projectId }: Props) {
         return;
       }
 
-      // Detect resize edge — rightmost ~6px of the note rect.
       const noteLeft = note.startSec * pixelsPerSecond;
       const noteWidth = Math.max(2, note.durationSec * pixelsPerSecond);
       const offsetX = x - noteLeft;
       if (offsetX > noteWidth - 6) {
-        dragRef.current = {
-          kind: 'resize',
-          noteId,
-          originX: x,
-          originDuration: note.durationSec,
-        };
+        dragRef.current = { kind: 'resize', noteId, originX: x, originDuration: note.durationSec };
         if (!selectedIds.has(noteId)) setSelectedIds(new Set([noteId]));
         return;
       }
 
-      // Body click — select (and prepare to move).
       let nextSel: Set<string>;
       if (e.shiftKey) {
         nextSel = new Set(selectedIds);
         if (nextSel.has(noteId)) nextSel.delete(noteId); else nextSel.add(noteId);
       } else if (selectedIds.has(noteId)) {
-        // Already selected — preserve the selection so we can move
-        // every selected note together.
         nextSel = new Set(selectedIds);
       } else {
         nextSel = new Set([noteId]);
@@ -260,7 +263,7 @@ export default function PianoRollPanel({ projectId }: Props) {
       return;
     }
 
-    // Click on empty grid — paint a new note at the snapped position.
+    // Empty grid → paint
     const { sec, pitch } = xyToNote(x, y);
     const startSec = snap(sec);
     const stepSec = snapDiv > 0 ? barSec / snapDiv : 0.25;
@@ -271,12 +274,7 @@ export default function PianoRollPanel({ projectId }: Props) {
       velocity: 0.85,
     });
     setSelectedIds(new Set([newId]));
-    dragRef.current = {
-      kind: 'paint',
-      noteId: newId,
-      startX: x,
-      pitch,
-    };
+    dragRef.current = { kind: 'paint', noteId: newId, startX: x, pitch };
   }, [selectedClip, selectedIds, pixelsPerSecond, xyToNote, snap, snapDiv, barSec, addNote, deleteNotes]);
 
   const onGridMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -287,7 +285,6 @@ export default function PianoRollPanel({ projectId }: Props) {
     const drag = dragRef.current;
 
     if (drag.kind === 'paint') {
-      // Extend the painted note's duration as the user drags right.
       const note = selectedClip.notes.find((n) => n.id === drag.noteId);
       if (!note) return;
       const wantSec = (x - drag.startX) / pixelsPerSecond + (snapDiv > 0 ? barSec / snapDiv : 0.25);
@@ -322,7 +319,6 @@ export default function PianoRollPanel({ projectId }: Props) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      // Only react when the user isn't typing in an input field.
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       if (!selectedClip) return;
@@ -343,7 +339,6 @@ export default function PianoRollPanel({ projectId }: Props) {
     if (!selectedClip) return;
     const trackId = selectedClip.trackId;
 
-    // OS file drop.
     const file = e.dataTransfer.files?.[0];
     if (file && /audio|wav|mp3|flac|aiff|ogg|m4a|aac/i.test(file.type + file.name)) {
       try {
@@ -356,7 +351,6 @@ export default function PianoRollPanel({ projectId }: Props) {
       return;
     }
 
-    // Sample library drag.
     const libRaw = e.dataTransfer.getData(SAMPLE_LIBRARY_DRAG_MIME);
     if (libRaw) {
       try {
@@ -373,7 +367,6 @@ export default function PianoRollPanel({ projectId }: Props) {
       return;
     }
 
-    // Project file drop (drag from arrangement / project).
     const projRaw = e.dataTransfer.getData('application/x-ghost-projectfile');
     if (projRaw) {
       try {
@@ -387,28 +380,42 @@ export default function PianoRollPanel({ projectId }: Props) {
 
   // --- Bar / beat grid lines ---------------------------------------
   const gridLines = useMemo(() => {
-    if (!selectedClip) return [] as Array<{ x: number; bold: boolean }>;
-    const lines: Array<{ x: number; bold: boolean }> = [];
-    const stepDur = snapDiv > 0 ? barSec / snapDiv : barSec / 4;
-    const stepCount = Math.ceil(selectedClip.lengthSec / stepDur);
-    for (let i = 0; i <= stepCount; i++) {
-      const sec = i * stepDur;
-      lines.push({ x: sec * pixelsPerSecond, bold: i % (snapDiv || 4) === 0 });
+    if (!selectedClip) return [] as Array<{ x: number; weight: 'bar' | 'beat' | 'sub' }>;
+    const lines: Array<{ x: number; weight: 'bar' | 'beat' | 'sub' }> = [];
+    const beatSec = barSec / 4;
+    const subDiv = snapDiv > 0 ? snapDiv : 16;
+    const subSec = barSec / subDiv;
+    const subCount = Math.ceil(selectedClip.lengthSec / subSec);
+    for (let i = 0; i <= subCount; i++) {
+      const sec = i * subSec;
+      const x = sec * pixelsPerSecond;
+      // Classify: bar boundary > beat boundary > sub-step.
+      const isBar = Math.abs(sec / barSec - Math.round(sec / barSec)) < 1e-4;
+      const isBeat = Math.abs(sec / beatSec - Math.round(sec / beatSec)) < 1e-4;
+      lines.push({ x, weight: isBar ? 'bar' : isBeat ? 'beat' : 'sub' });
     }
     return lines;
   }, [selectedClip, snapDiv, barSec, pixelsPerSecond]);
 
-  // Octave / black-key band rendering for the grid background.
-  // Highlights C rows + black keys so the user can read pitches at a
-  // glance without the keyboard column being fully visible.
+  // --- Pitch row bands (black-key shading + C separators) ----------
   const pitchBands = useMemo(() => {
     const bands: Array<{ y: number; isC: boolean; isBlack: boolean }> = [];
     for (let p = highPitch; p >= lowPitch; p--) {
       const y = (highPitch - p) * PITCH_HEIGHT;
-      bands.push({ y, isC: p % 12 === 0, isBlack: [1, 3, 6, 8, 10].includes(((p % 12) + 12) % 12) });
+      const mod = ((p % 12) + 12) % 12;
+      bands.push({ y, isC: mod === 0, isBlack: BLACK_KEY_PITCHES.has(mod) });
     }
     return bands;
   }, [lowPitch, highPitch]);
+
+  // --- Bar number labels for the ruler -----------------------------
+  const barLabels = useMemo(() => {
+    const labels: Array<{ x: number; n: number }> = [];
+    for (let b = 0; b <= clipBars; b++) {
+      labels.push({ x: b * PIXELS_PER_BAR + 4, n: b + 1 });
+    }
+    return labels;
+  }, [clipBars]);
 
   // --- Live playhead position --------------------------------------
   const currentTime = useAudioStore((s) => s.currentTime);
@@ -422,8 +429,8 @@ export default function PianoRollPanel({ projectId }: Props) {
 
   return (
     <div
-      className="w-full flex flex-col select-none"
-      style={{ height: panelHeight, background: 'rgba(10,4,18,0.97)', borderTop: '1px solid rgba(255,255,255,0.08)' }}
+      className="w-full flex flex-col select-none relative"
+      style={{ height: panelHeight, background: COLOR_BG, borderTop: '1px solid rgba(0,0,0,0.6)' }}
     >
       {/* Resize handle */}
       <div
@@ -445,33 +452,33 @@ export default function PianoRollPanel({ projectId }: Props) {
       {/* Header */}
       <div
         className="flex items-center gap-2 px-3"
-        style={{ height: HEADER_HEIGHT, background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+        style={{ height: HEADER_HEIGHT, background: COLOR_HEADER, borderBottom: '1px solid rgba(0,0,0,0.55)' }}
         onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
         onDrop={onHeaderDrop}
       >
-        <span className="text-[12px] font-semibold text-white/80">Piano Roll</span>
+        <span className="text-[12px] font-semibold text-white/85">Piano Roll</span>
         <span className="text-white/30">·</span>
-        <span className="text-[11px] text-white/60">
+        <span className="text-[11px] text-white/65">
           {instrument?.fileId ? instrument.name : 'Drop a sample here →'}
         </span>
-        {instrument?.fileId && (
+        {instrument?.fileId && selectedClip && (
           <>
             <span className="text-white/20">·</span>
-            <label className="text-[11px] text-white/50 flex items-center gap-1">
+            <label className="text-[11px] text-white/55 flex items-center gap-1">
               base
               <input
                 type="number"
                 min={0}
                 max={127}
                 value={instrument.baseNote}
-                onChange={(e) => setBaseNote(selectedClip!.trackId, parseInt(e.target.value, 10) || 60)}
+                onChange={(e) => setBaseNote(selectedClip.trackId, parseInt(e.target.value, 10) || 60)}
                 className="w-12 bg-white/[0.04] border border-white/[0.08] rounded px-1 py-0.5 text-white/80 text-[11px]"
               />
             </label>
           </>
         )}
         <div className="ml-auto flex items-center gap-2">
-          <label className="text-[11px] text-white/50 flex items-center gap-1">
+          <label className="text-[11px] text-white/55 flex items-center gap-1">
             snap
             <select
               value={snapDiv}
@@ -493,31 +500,85 @@ export default function PianoRollPanel({ projectId }: Props) {
         </div>
       </div>
 
-      {/* Body: keyboard | grid | velocity (one shared scroll) */}
-      <div className="flex-1 min-h-0 flex">
-        <PianoRollKeyboard
-          lowPitch={lowPitch}
-          highPitch={highPitch}
-          pitchHeight={PITCH_HEIGHT}
-          width={KEYBOARD_WIDTH}
-          previewBuffer={instrument?.buffer}
-          previewBaseNote={instrument?.baseNote}
-          previewVolume={instrument?.volume}
+      {/* Ruler row — keyboard-width spacer, then bar numbers that
+          horizontally scroll with the grid. */}
+      <div
+        className="flex shrink-0"
+        style={{ height: RULER_HEIGHT, background: COLOR_RULER, borderBottom: '1px solid rgba(0,0,0,0.55)' }}
+      >
+        <div
+          className="shrink-0"
+          style={{ width: KEYBOARD_WIDTH, borderRight: '1px solid rgba(0,0,0,0.5)' }}
         />
+        <div
+          ref={rulerRef}
+          className="flex-1 overflow-x-hidden overflow-y-hidden relative"
+        >
+          <div className="relative" style={{ width: gridWidth, height: RULER_HEIGHT }}>
+            {barLabels.map((b) => (
+              <span
+                key={b.n}
+                className="absolute top-0 text-[10px] font-mono text-white/55"
+                style={{ left: b.x, lineHeight: `${RULER_HEIGHT}px` }}
+              >
+                {b.n}
+              </span>
+            ))}
+            {/* Tick marks at every bar */}
+            {gridLines
+              .filter((l) => l.weight === 'bar')
+              .map((l, i) => (
+                <div
+                  key={i}
+                  className="absolute bottom-0 pointer-events-none"
+                  style={{ left: l.x, width: 1, height: 6, background: 'rgba(255,255,255,0.4)' }}
+                />
+              ))}
+          </div>
+        </div>
+      </div>
 
-        <div className="flex-1 flex flex-col min-w-0">
-          {/* Note grid */}
-          <div
-            ref={gridRef}
-            className="flex-1 relative overflow-auto"
-            onMouseDown={onGridMouseDown}
-            onMouseMove={onGridMouseMove}
-            onMouseUp={onGridMouseUp}
-            onMouseLeave={onGridMouseUp}
-            onContextMenu={(e) => e.preventDefault()}
-          >
-            <div className="relative" style={{ width: gridWidth, height: gridHeight }}>
-              {/* Pitch bands (alternating black/white) */}
+      {/* Body: keyboard | grid (both share vertical scroll inside grid-area) */}
+      <div className="flex-1 min-h-0 flex">
+        <div
+          ref={gridRef}
+          className="flex-1 relative overflow-auto"
+          onScroll={onGridScroll}
+          onMouseDown={onGridMouseDown}
+          onMouseMove={onGridMouseMove}
+          onMouseUp={onGridMouseUp}
+          onMouseLeave={onGridMouseUp}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          {/* Inside the scroll container we lay out a wide+tall canvas:
+              keyboard sticks to the left at all horizontal scroll
+              positions; grid content fills the rest. */}
+          <div className="relative" style={{ width: KEYBOARD_WIDTH + gridWidth, height: gridHeight }}>
+            {/* Keyboard column — sticky-left so it stays visible as
+                the user scrolls horizontally. zIndex sits above the
+                grid content so notes scrolling under it are clipped
+                visually by the sticky edge. */}
+            <div
+              className="sticky top-0 z-20"
+              style={{ left: 0, width: KEYBOARD_WIDTH, float: 'left' }}
+            >
+              <PianoRollKeyboard
+                lowPitch={lowPitch}
+                highPitch={highPitch}
+                pitchHeight={PITCH_HEIGHT}
+                width={KEYBOARD_WIDTH}
+                previewBuffer={instrument?.buffer}
+                previewBaseNote={instrument?.baseNote}
+                previewVolume={instrument?.volume}
+              />
+            </div>
+            {/* Grid content — pitch bands, time grid lines, notes,
+                playhead. Offset to the right of the keyboard. */}
+            <div
+              className="absolute top-0"
+              style={{ left: KEYBOARD_WIDTH, width: gridWidth, height: gridHeight }}
+            >
+              {/* Black-key row tints + C row separator */}
               {pitchBands.map((b, i) => (
                 <div
                   key={i}
@@ -525,8 +586,8 @@ export default function PianoRollPanel({ projectId }: Props) {
                   style={{
                     top: b.y,
                     height: PITCH_HEIGHT,
-                    background: b.isBlack ? 'rgba(0,0,0,0.18)' : 'transparent',
-                    borderBottom: b.isC ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(255,255,255,0.02)',
+                    background: b.isBlack ? COLOR_BG_BLACKROW : 'transparent',
+                    borderBottom: b.isC ? `1px solid ${COLOR_GRID_C}` : '1px solid rgba(255,255,255,0.025)',
                   }}
                 />
               ))}
@@ -538,7 +599,9 @@ export default function PianoRollPanel({ projectId }: Props) {
                   style={{
                     left: l.x,
                     width: 1,
-                    background: l.bold ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.05)',
+                    background: l.weight === 'bar' ? COLOR_GRID_BAR
+                      : l.weight === 'beat' ? 'rgba(255,255,255,0.10)'
+                      : COLOR_GRID_LINE,
                   }}
                 />
               ))}
@@ -560,35 +623,39 @@ export default function PianoRollPanel({ projectId }: Props) {
                   style={{
                     left: playheadX,
                     width: 2,
-                    background: '#00FFC8',
-                    boxShadow: '0 0 6px rgba(0,255,200,0.5)',
+                    background: '#FFFFFF',
+                    boxShadow: '0 0 6px rgba(255,255,255,0.55)',
+                    opacity: 0.9,
                   }}
                 />
               )}
             </div>
           </div>
-
-          {/* Velocity lane below the grid */}
-          {selectedClip && (
-            <div className="relative" style={{ width: gridWidth }}>
-              <VelocityLane
-                clipId={selectedClip.id}
-                notes={selectedClip.notes}
-                selectedNoteIds={selectedIds}
-                pixelsPerSecond={pixelsPerSecond}
-                height={VELOCITY_HEIGHT}
-              />
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Empty state hint when no instrument */}
-      {selectedClip && !instrument?.buffer && (
-        <div className="absolute pointer-events-none flex items-center justify-center" style={{ top: HEADER_HEIGHT + 4, left: KEYBOARD_WIDTH + 12, right: 12 }}>
-          <span className="text-[11px] text-white/40">
-            Drag a sample onto the header above to set the instrument →
-          </span>
+      {/* Velocity row — spacer + lollipop lane that scrolls with grid */}
+      {selectedClip && (
+        <div className="flex shrink-0" style={{ height: VELOCITY_HEIGHT }}>
+          <div
+            className="shrink-0 flex items-center justify-end pr-2"
+            style={{ width: KEYBOARD_WIDTH, background: '#1F2A38', borderRight: '1px solid rgba(0,0,0,0.5)', borderTop: '1px solid rgba(0,0,0,0.55)' }}
+          >
+            <span className="text-[9px] font-mono text-white/40 uppercase tracking-wider">vel</span>
+          </div>
+          <div
+            ref={velocityRef}
+            className="flex-1 overflow-x-hidden overflow-y-hidden"
+          >
+            <VelocityLane
+              clipId={selectedClip.id}
+              notes={selectedClip.notes}
+              selectedNoteIds={selectedIds}
+              pixelsPerSecond={pixelsPerSecond}
+              height={VELOCITY_HEIGHT}
+              width={gridWidth}
+            />
+          </div>
         </div>
       )}
     </div>
