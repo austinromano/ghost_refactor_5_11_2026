@@ -259,13 +259,30 @@ export default function PianoRollPanel({ projectId }: Props) {
   }, []);
 
   // --- Grid mouse handlers ----------------------------------------
+  // x/y here are in GRID-CONTENT coordinates (0-based within the
+  // notes area). The scroll container's leftmost KEYBOARD_WIDTH px
+  // are occupied by the keyboard column, so we have to subtract it
+  // to align note positions with click positions. xRaw still has
+  // the keyboard offset so the move/resize/paint deltas computed in
+  // onGridMouseMove (which compare against this same xRaw stored on
+  // the drag state) stay self-consistent.
   const onGridMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!selectedClip || !gridRef.current) return;
     const rect = gridRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left + gridRef.current.scrollLeft;
+    const xRaw = e.clientX - rect.left + gridRef.current.scrollLeft;
     const y = e.clientY - rect.top + gridRef.current.scrollTop;
+    const x = xRaw - KEYBOARD_WIDTH;
+    // Clicks that land on the keyboard column (left of the grid)
+    // are handled by the keyboard's own onMouseDown — bail so we
+    // don't paint a phantom note at sec=0 when the user previews
+    // a key.
+    if (x < 0) return;
+    // Walk up to the nearest [data-note-id] ancestor so clicks on
+    // child elements inside a note (e.g. the cursor-resize edge
+    // hint) still resolve to the note's id.
     const target = (e.target as HTMLElement);
-    const noteId = target.dataset.noteId;
+    const noteEl = target.closest('[data-note-id]') as HTMLElement | null;
+    const noteId = noteEl?.dataset.noteId;
 
     if (noteId) {
       const note = selectedClip.notes.find((n) => n.id === noteId);
@@ -282,7 +299,11 @@ export default function PianoRollPanel({ projectId }: Props) {
       const noteLeft = note.startSec * pixelsPerSecond;
       const noteWidth = Math.max(2, note.durationSec * pixelsPerSecond);
       const offsetX = x - noteLeft;
-      if (offsetX > noteWidth - 6) {
+      // Resize edge — rightmost ~10 px of the note. Wide enough to be
+      // hit-able with the mouse without making the body click area
+      // feel cramped on small notes. Cursor hint comes from
+      // PianoRollNote's overlay child.
+      if (offsetX > noteWidth - 10) {
         dragRef.current = { kind: 'resize', noteId, originX: x, originDuration: note.durationSec };
         if (!selectedIds.has(noteId)) setSelectedIds(new Set([noteId]));
         return;
@@ -335,8 +356,13 @@ export default function PianoRollPanel({ projectId }: Props) {
   const onGridMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!selectedClip || !gridRef.current || dragRef.current.kind === 'idle') return;
     const rect = gridRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left + gridRef.current.scrollLeft;
+    // Same KEYBOARD_WIDTH correction as onGridMouseDown — keeps the
+    // x stored on the drag state and the x measured each move in the
+    // SAME coordinate system, so dx = x - originX is a true pixel
+    // delta instead of being permanently off by KEYBOARD_WIDTH.
+    const xRaw = e.clientX - rect.left + gridRef.current.scrollLeft;
     const y = e.clientY - rect.top + gridRef.current.scrollTop;
+    const x = xRaw - KEYBOARD_WIDTH;
     const drag = dragRef.current;
 
     if (drag.kind === 'paint') {

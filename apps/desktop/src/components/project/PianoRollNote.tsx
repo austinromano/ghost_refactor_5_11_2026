@@ -41,10 +41,17 @@ function PianoRollNoteInner({ note, highPitch, pitchHeight, pixelsPerSecond, sel
   const border = selected ? 'rgba(255,255,255,0.95)' : 'rgba(0,0,0,0.7)';
   const topHighlight = selected ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.4)';
 
+  // Resize edge width — must match the parent grid's edge-detection
+  // threshold (PianoRollPanel.onGridMouseDown checks offsetX > width - 10).
+  // Render an inner overlay with cursor: ew-resize so the user gets a
+  // visual cue when they hover the right edge. Hidden on tiny notes
+  // (< 12px) where the edge hint would consume the entire body.
+  const showResizeHint = width >= 12;
+
   return (
     <div
       data-note-id={note.id}
-      className="absolute pointer-events-auto"
+      className="absolute pointer-events-auto cursor-grab"
       style={{
         left,
         top,
@@ -59,7 +66,18 @@ function PianoRollNoteInner({ note, highPitch, pitchHeight, pixelsPerSecond, sel
           ? '0 0 6px rgba(168,85,247,0.55), inset 0 1px 0 rgba(255,255,255,0.6)'
           : 'inset 0 1px 0 rgba(255,255,255,0.25)',
       }}
-    />
+    >
+      {showResizeHint && (
+        <div
+          // data-note-id is on the parent, so the parent's noteId
+          // detection still works when a child overlay catches the
+          // event (HTMLElement.dataset bubbles via target.closest).
+          // Pure cursor-styling div — no separate handler.
+          className="absolute top-0 right-0 bottom-0 cursor-ew-resize"
+          style={{ width: 6 }}
+        />
+      )}
+    </div>
   );
 }
 
