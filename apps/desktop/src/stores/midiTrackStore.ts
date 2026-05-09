@@ -54,12 +54,30 @@ export interface MidiInstrument {
   baseNote: number;       // pitch the sample plays at unshifted (default 60 = C4)
   volume: number;         // 0-1.5 — same range as drum rows
   muted: boolean;
+
+  // --- Sampler params ---------------------------------------------
+  // Normalised playback window into the source sample. 0..1 fractions
+  // of buffer.duration. start=0, end=1 plays the whole buffer.
+  startOffset: number;
+  endOffset: number;
+  // ADSR envelope (seconds, sustain is 0..1). Applied to the per-note
+  // gain in the scheduler so notes can have soft attacks, percussive
+  // releases, etc. Default = 0/0/1/0 (instant attack, full sustain,
+  // instant release) so existing patches don't change behaviour.
+  attackSec: number;
+  decaySec: number;
+  sustainLevel: number;
+  releaseSec: number;
 }
 
 interface MidiTrackState {
   // Panel UI state.
   open: boolean;
   panelHeight: number;
+  // Track id whose Sampler is currently being edited in the floating
+  // sampler panel. Null = no sampler panel open. Click a MIDI track's
+  // instrument badge in the arrangement to set this.
+  samplerOpenTrackId: string | null;
 
   // Per-track instrument (keyed by the project-store track id).
   instruments: Record<string, MidiInstrument>;
@@ -71,6 +89,7 @@ interface MidiTrackState {
 
   setOpen: (v: boolean) => void;
   setPanelHeight: (px: number) => void;
+  openSampler: (trackId: string | null) => void;
 
   // Instrument config
   ensureInstrument: (trackId: string) => void;
@@ -78,6 +97,9 @@ interface MidiTrackState {
   setBaseNote: (trackId: string, pitch: number) => void;
   setInstrumentVolume: (trackId: string, v: number) => void;
   toggleInstrumentMuted: (trackId: string) => void;
+  // Sampler params
+  setSamplerRange: (trackId: string, startOffset: number, endOffset: number) => void;
+  setSamplerEnvelope: (trackId: string, env: Partial<{ attackSec: number; decaySec: number; sustainLevel: number; releaseSec: number }>) => void;
 
   // Clip-level
   selectClip: (clipId: string | null) => void;
@@ -132,6 +154,12 @@ export interface MidiSyncPayload {
     baseNote: number;
     volume: number;
     muted: boolean;
+    startOffset: number;
+    endOffset: number;
+    attackSec: number;
+    decaySec: number;
+    sustainLevel: number;
+    releaseSec: number;
   }>;
   clips: MidiClip[];
 }
@@ -145,6 +173,12 @@ function buildSyncPayload(instruments: Record<string, MidiInstrument>, clips: Mi
       baseNote: inst.baseNote,
       volume: inst.volume,
       muted: inst.muted,
+      startOffset: inst.startOffset,
+      endOffset: inst.endOffset,
+      attackSec: inst.attackSec,
+      decaySec: inst.decaySec,
+      sustainLevel: inst.sustainLevel,
+      releaseSec: inst.releaseSec,
     };
   }
   return { instruments: out, clips };
@@ -165,19 +199,51 @@ export function getMidiSyncSnapshot(): MidiSyncPayload | null {
   return payloadHasContent(payload) ? payload : null;
 }
 
-function makeInstrument(): MidiInstrument {
+// Coerce a saved/remote instrument blob into a fully-shaped
+// MidiInstrument. Older saves (before the sampler params landed)
+// don't have startOffset / ADSR fields; migrate by filling in the
+// makeInstrument() defaults so playback still works on first load.
+function coerceInstrument(raw: any): MidiInstrument {
+  const def = makeInstrumentInternal();
+  return {
+    fileId: raw?.fileId ?? null,
+    name: typeof raw?.name === 'string' ? raw.name : def.name,
+    buffer: undefined,
+    baseNote: Number.isFinite(raw?.baseNote) ? raw.baseNote : def.baseNote,
+    volume: Number.isFinite(raw?.volume) ? raw.volume : def.volume,
+    muted: !!raw?.muted,
+    startOffset: Number.isFinite(raw?.startOffset) ? raw.startOffset : def.startOffset,
+    endOffset: Number.isFinite(raw?.endOffset) ? raw.endOffset : def.endOffset,
+    attackSec: Number.isFinite(raw?.attackSec) ? raw.attackSec : def.attackSec,
+    decaySec: Number.isFinite(raw?.decaySec) ? raw.decaySec : def.decaySec,
+    sustainLevel: Number.isFinite(raw?.sustainLevel) ? raw.sustainLevel : def.sustainLevel,
+    releaseSec: Number.isFinite(raw?.releaseSec) ? raw.releaseSec : def.releaseSec,
+  };
+}
+
+function makeInstrumentInternal(): MidiInstrument {
   return {
     fileId: null,
     name: 'Empty',
     baseNote: 60,         // C4 — Ableton Sampler's default
     volume: 1,
     muted: false,
+    startOffset: 0,
+    endOffset: 1,
+    attackSec: 0.005,     // ~5 ms — avoids click on fast attacks while
+    decaySec: 0,          //         keeping the sampler responsive
+    sustainLevel: 1,      // full sustain (one-shot pass-through)
+    releaseSec: 0.05,     // ~50 ms tail to soften note-off click
   };
 }
+
+// Public alias preserved for the rest of the file's call sites.
+const makeInstrument = makeInstrumentInternal;
 
 export const useMidiTrack = create<MidiTrackState>((set, get) => ({
   open: false,
   panelHeight: 320,
+  samplerOpenTrackId: null,
 
   instruments: {},
   clips: [],
@@ -185,6 +251,7 @@ export const useMidiTrack = create<MidiTrackState>((set, get) => ({
 
   setOpen: (v) => set({ open: v }),
   setPanelHeight: (px) => set({ panelHeight: Math.max(160, Math.min(720, px)) }),
+  openSampler: (trackId) => set({ samplerOpenTrackId: trackId }),
 
   ensureInstrument: (trackId) => set((s) => {
     if (s.instruments[trackId]) return s;
@@ -230,6 +297,36 @@ export const useMidiTrack = create<MidiTrackState>((set, get) => ({
       instruments: {
         ...s.instruments,
         [trackId]: { ...prev, muted: !prev.muted },
+      },
+    };
+  }),
+
+  setSamplerRange: (trackId, startOffset, endOffset) => set((s) => {
+    const prev = s.instruments[trackId];
+    if (!prev) return s;
+    const lo = Math.max(0, Math.min(1, Math.min(startOffset, endOffset)));
+    const hi = Math.max(lo + 0.001, Math.min(1, Math.max(startOffset, endOffset)));
+    return {
+      instruments: {
+        ...s.instruments,
+        [trackId]: { ...prev, startOffset: lo, endOffset: hi },
+      },
+    };
+  }),
+
+  setSamplerEnvelope: (trackId, env) => set((s) => {
+    const prev = s.instruments[trackId];
+    if (!prev) return s;
+    return {
+      instruments: {
+        ...s.instruments,
+        [trackId]: {
+          ...prev,
+          attackSec: env.attackSec !== undefined ? Math.max(0, Math.min(8, env.attackSec)) : prev.attackSec,
+          decaySec: env.decaySec !== undefined ? Math.max(0, Math.min(8, env.decaySec)) : prev.decaySec,
+          sustainLevel: env.sustainLevel !== undefined ? Math.max(0, Math.min(1, env.sustainLevel)) : prev.sustainLevel,
+          releaseSec: env.releaseSec !== undefined ? Math.max(0, Math.min(8, env.releaseSec)) : prev.releaseSec,
+        },
       },
     };
   }),
@@ -441,12 +538,57 @@ export const useMidiTrack = create<MidiTrackState>((set, get) => ({
           src.playbackRate.value = pitchShiftRatio(note.pitch, inst.baseNote);
 
           const g = ctx.createGain();
-          g.gain.value = inst.volume * note.velocity;
+          // ADSR envelope on the per-note gain. The peak velocity
+          // value is at the end of the attack ramp; sustain holds at
+          // peak * sustainLevel until note-off, then ramps to zero
+          // over releaseSec. Sample-accurate via AudioParam scheduling.
+          const peak = inst.volume * note.velocity;
+          const sustainAmp = peak * inst.sustainLevel;
           src.connect(g);
           g.connect(getMaster());
 
-          const when = noteAbsTime + startedAt;
-          src.start(Math.max(ctxNow, when));
+          // Sample window: skip into the buffer by startOffset, stop
+          // when the playback head crosses endOffset. Both expressed
+          // as fractions of buffer.duration so they survive a sample
+          // swap without re-normalising.
+          const bufDur = inst.buffer.duration;
+          const startBufSec = inst.startOffset * bufDur;
+          const endBufSec = inst.endOffset * bufDur;
+          const playableBufSec = Math.max(0.005, endBufSec - startBufSec);
+
+          const when = Math.max(ctxNow, noteAbsTime + startedAt);
+          // Apply envelope at `when`. setValueAtTime locks the
+          // initial 0 so a fresh AudioParam doesn't slew from its
+          // previous value if g is somehow reused.
+          g.gain.setValueAtTime(0, when);
+          if (inst.attackSec > 0) {
+            g.gain.linearRampToValueAtTime(peak, when + inst.attackSec);
+          } else {
+            g.gain.setValueAtTime(peak, when);
+          }
+          if (inst.decaySec > 0 && sustainAmp < peak) {
+            g.gain.linearRampToValueAtTime(sustainAmp, when + inst.attackSec + inst.decaySec);
+          } else {
+            // No decay → hold peak until release.
+            g.gain.setValueAtTime(peak, when + inst.attackSec);
+          }
+          // Note-off: at note end, ramp to zero over releaseSec.
+          // note.durationSec is editor metadata; clamp to the
+          // sample's playable window so we never schedule past the
+          // actual buffer length.
+          const noteOff = when + Math.min(note.durationSec, playableBufSec / src.playbackRate.value);
+          g.gain.setValueAtTime(g.gain.value, noteOff);
+          if (inst.releaseSec > 0) {
+            g.gain.linearRampToValueAtTime(0, noteOff + inst.releaseSec);
+          } else {
+            g.gain.setValueAtTime(0, noteOff);
+          }
+
+          src.start(when, startBufSec);
+          // Hard-stop the source after the release tail completes so
+          // the AudioBufferSourceNode is GC-eligible. +50 ms guard
+          // covers any sub-quantum scheduling jitter.
+          src.stop(noteOff + inst.releaseSec + 0.05);
 
           // Polyphony cap — drop the oldest voice on this track if we
           // hit the limit. Keeps CPU bounded on long held chords.
@@ -508,7 +650,9 @@ export const useMidiTrack = create<MidiTrackState>((set, get) => ({
         };
         const instruments: Record<string, MidiInstrument> = {};
         for (const [tid, i] of Object.entries(data.instruments || {})) {
-          instruments[tid] = { ...i, buffer: undefined };
+          // Migrate any pre-sampler saves through coerceInstrument so
+          // missing ADSR / startOffset / endOffset get sensible defaults.
+          instruments[tid] = coerceInstrument(i);
         }
         set({
           instruments,
@@ -574,9 +718,10 @@ export const useMidiTrack = create<MidiTrackState>((set, get) => ({
 
       const next: Record<string, MidiInstrument> = {};
       for (const [tid, i] of Object.entries(payload.instruments)) {
+        const coerced = coerceInstrument(i);
         next[tid] = {
-          ...i,
-          buffer: i.fileId ? fileIdToBuffer.get(i.fileId) : undefined,
+          ...coerced,
+          buffer: coerced.fileId ? fileIdToBuffer.get(coerced.fileId) : undefined,
         };
       }
 

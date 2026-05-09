@@ -7,6 +7,7 @@ import { api } from '../../lib/api';
 import { getCtx } from '../../stores/audio/graph';
 import { SAMPLE_LIBRARY_DRAG_MIME } from '../layout/SampleLibrarySection';
 import MidiClipBlock, { MIDI_CLIP_DRAG_MIME } from './MidiClipBlock';
+import { INSTRUMENT_DRAG_MIME } from '../instruments/InstrumentsSection';
 
 // One MIDI track lane in the arrangement. Mirrors the drum-rack lane's
 // shape but per-track (each MIDI project track gets its own lane,
@@ -45,6 +46,7 @@ export default function MidiLane({ laneKey, track, laneHeight, projectId }: Prop
   const resizeClip = useMidiTrack((s) => s.resizeClip);
   const deleteClip = useMidiTrack((s) => s.deleteClip);
   const selectClip = useMidiTrack((s) => s.selectClip);
+  const openSampler = useMidiTrack((s) => s.openSampler);
 
   const { bpm, arrangementDur } = useArrangement();
   const barSec = 240 / Math.max(1, bpm);
@@ -98,10 +100,18 @@ export default function MidiLane({ laneKey, track, laneHeight, projectId }: Prop
     setOpen(true);
   };
 
-  // ---- Sample drop on track header ---------------------------------
+  // ---- Sample / instrument drop on track header --------------------
+  // Accepts: OS file drops, sample-library drops, project-file drops
+  // (all set the track's sample directly), and instrument drops from
+  // the Instruments sidebar (creates an empty Sampler and opens the
+  // Sampler UI for the user to load a sample into).
   const onHeaderDragOver = (e: React.DragEvent) => {
-    // Accept OS file drops + sample library drops + project file drops.
-    if (e.dataTransfer.files?.length || e.dataTransfer.types.includes(SAMPLE_LIBRARY_DRAG_MIME) || e.dataTransfer.types.includes('application/x-ghost-projectfile')) {
+    if (
+      e.dataTransfer.files?.length
+      || e.dataTransfer.types.includes(SAMPLE_LIBRARY_DRAG_MIME)
+      || e.dataTransfer.types.includes('application/x-ghost-projectfile')
+      || e.dataTransfer.types.includes(INSTRUMENT_DRAG_MIME)
+    ) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
     }
@@ -109,6 +119,21 @@ export default function MidiLane({ laneKey, track, laneHeight, projectId }: Prop
   const onHeaderDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    // Instrument drag — the user dropped a "Sampler" tile onto this
+    // lane. There's nothing audio to load yet; just make sure the
+    // instrument record exists and pop the Sampler UI so the user
+    // can drop a sample into it next.
+    const instRaw = e.dataTransfer.getData(INSTRUMENT_DRAG_MIME);
+    if (instRaw) {
+      try {
+        const payload = JSON.parse(instRaw) as { kind: string };
+        if (payload?.kind === 'sampler') {
+          ensureInstrument(trackId);
+          openSampler(trackId);
+          return;
+        }
+      } catch { /* malformed — fall through to other formats */ }
+    }
     const file = e.dataTransfer.files?.[0];
     if (file && /audio|wav|mp3|flac|aiff|ogg|m4a|aac/i.test(file.type + file.name)) {
       try {
@@ -229,7 +254,23 @@ export default function MidiLane({ laneKey, track, laneHeight, projectId }: Prop
             <line x1="14" y1="6" x2="14" y2="14" />
             <line x1="18" y1="6" x2="18" y2="14" />
           </svg>
-          <span className="text-[12px] font-semibold text-white/90 truncate">{track.name || 'MIDI'}</span>
+          <span className="text-[12px] font-semibold text-white/90 truncate flex-1">{track.name || 'MIDI'}</span>
+          {/* Open Sampler — small button so the lane drag-to-reorder
+              still works on the rest of the header (the parent's
+              pointer-down bails when the target is a button). */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              ensureInstrument(trackId);
+              openSampler(trackId);
+            }}
+            className="shrink-0 w-5 h-5 rounded flex items-center justify-center text-white/70 hover:text-white hover:bg-white/[0.08] transition-colors"
+            title="Open sampler"
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 12c1-3 2-3 3 0s2 3 3 0 2-3 3 0 2 3 3 0 2-3 3 0 2 3 3 0" />
+            </svg>
+          </button>
         </div>
       </div>
 
