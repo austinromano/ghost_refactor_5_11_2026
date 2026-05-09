@@ -48,6 +48,12 @@ export default function MidiLane({ laneKey, track, laneHeight, projectId }: Prop
 
   const { bpm, arrangementDur } = useArrangement();
   const barSec = 240 / Math.max(1, bpm);
+  // MIDI clips snap to a beat (1/4 bar) instead of a whole bar so
+  // the user can position clips precisely without having to overshoot
+  // the half-bar threshold to escape from a snapped bar position.
+  // Drum lane uses bar-snap; MIDI gets the finer grid because it
+  // tends to host shorter, melodic phrases.
+  const beatSec = barSec / 4;
 
   // Pull this track's clips off the store. Clips for OTHER MIDI tracks
   // live in the same array but render on their own lanes via this
@@ -70,13 +76,21 @@ export default function MidiLane({ laneKey, track, laneHeight, projectId }: Prop
     return ratio * arrangementDur;
   }, [arrangementDur]);
 
-  const snapToBar = (t: number) => Math.round(t / barSec) * barSec;
+  // Snap arbitrary project-time → grid. Magnetic-to-zero: anything
+  // closer to 0 than half a beat lands exactly on 0, so the user
+  // can ALWAYS push a clip flush to the start of the arrangement
+  // by dragging it leftward — they don't have to find the exact
+  // pixel where the snap rounds down.
+  const snapTime = (t: number) => {
+    if (t <= beatSec * 0.5) return 0;
+    return Math.round(t / beatSec) * beatSec;
+  };
 
   // Click empty lane → make a new clip there, 4 bars long by default.
   const handleLaneMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest('[data-midi-clip]')) return;
-    const t = Math.max(0, snapToBar(xToTime(e.clientX)));
+    const t = Math.max(0, snapTime(xToTime(e.clientX)));
     const lengthSec = 4 * barSec;
     ensureInstrument(trackId);
     const id = createClipAt(trackId, t, lengthSec);
@@ -156,7 +170,7 @@ export default function MidiLane({ laneKey, track, laneHeight, projectId }: Prop
       // Move the clip to THIS lane at the dropped position. We update
       // BOTH startSec and (logically) trackId — but moveClip only
       // touches startSec, so we also need to retarget the trackId.
-      const t = Math.max(0, snapToBar(xToTime(e.clientX)));
+      const t = Math.max(0, snapTime(xToTime(e.clientX)));
       // Reassign trackId by editing the store directly. Cheaper than
       // adding a dedicated retargetClip action since the existing
       // setState call applies the broadcast subscription too.
@@ -254,8 +268,8 @@ export default function MidiLane({ laneKey, track, laneHeight, projectId }: Prop
             laneHeight={laneHeight}
             selected={clip.id === selectedClipId}
             onSelect={() => { selectClip(clip.id); setOpen(true); }}
-            onMove={(newStart) => moveClip(clip.id, Math.max(0, snapToBar(newStart)))}
-            onResize={(newLen) => resizeClip(clip.id, Math.max(barSec, snapToBar(newLen)))}
+            onMove={(newStart) => moveClip(clip.id, Math.max(0, snapTime(newStart)))}
+            onResize={(newLen) => resizeClip(clip.id, Math.max(barSec, snapTime(newLen)))}
             onDelete={() => deleteClip(clip.id)}
             xToTime={xToTime}
           />
