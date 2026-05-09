@@ -195,6 +195,8 @@ export default function PianoRollPanel({ projectId }: Props) {
     return () => { stopScheduler(); };
   }, [isPlaying, projectId, startScheduler, stopScheduler]);
 
+  const setLoopRegion = useAudioStore((s) => s.setLoopRegion);
+
   // --- On open, fall back to the first existing clip --------------
   // Real MIDI tracks live in the project's track table now, and clips
   // are created via the lane (click empty space → new clip). When the
@@ -240,7 +242,27 @@ export default function PianoRollPanel({ projectId }: Props) {
   const [snapDiv, setSnapDiv] = useState(16);
   const [tool, setTool] = useState<Tool>('draw');
   const [audition, setAudition] = useState(true);
+  const [autoLoop, setAutoLoop] = useState(true);
   const [marqueeRect, setMarqueeRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+
+  // --- Auto-loop the selected clip --------------------------------
+  // When the panel is open with a clip selected and auto-loop is on,
+  // tell the audio store to wrap transport between the clip's bounds.
+  // updatePosition() reads loopRegion every RAF tick so changes here
+  // take effect on the next frame without restarting playback.
+  useEffect(() => {
+    if (!open || !autoLoop) {
+      setLoopRegion(null);
+      return;
+    }
+    const clip = clips.find((c) => c.id === selectedClipId);
+    if (!clip) {
+      setLoopRegion(null);
+      return;
+    }
+    setLoopRegion({ start: clip.startSec, end: clip.startSec + clip.lengthSec });
+    return () => { setLoopRegion(null); };
+  }, [open, autoLoop, selectedClipId, clips, setLoopRegion]);
   // Focus scoping — keyboard shortcuts (Delete / Ctrl+C/V/X/A) and the
   // select-tool crosshair cursor should only fire when the user has
   // actively clicked into the piano roll. Otherwise pressing Delete in
@@ -862,6 +884,26 @@ export default function PianoRollPanel({ projectId }: Props) {
                   <line x1="17" y1="9" x2="23" y2="15" />
                 </>
               )}
+            </svg>
+          </button>
+          {/* Auto-loop toggle — when on, transport wraps between the
+              selected clip's start/end so the user can hear their
+              edits on repeat without manually re-pressing play. */}
+          <button
+            onClick={() => setAutoLoop((v) => !v)}
+            title={autoLoop ? 'Auto-loop on — selected clip plays on repeat' : 'Auto-loop off — playback runs through the whole arrangement'}
+            className="flex items-center justify-center px-1.5 py-0.5 rounded border"
+            style={{
+              background: autoLoop ? 'rgba(168,85,247,0.35)' : 'rgba(255,255,255,0.04)',
+              borderColor: autoLoop ? 'rgba(168,85,247,0.5)' : 'rgba(255,255,255,0.08)',
+              color: autoLoop ? '#fff' : 'rgba(255,255,255,0.55)',
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="17 1 21 5 17 9" />
+              <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+              <polyline points="7 23 3 19 7 15" />
+              <path d="M21 13v2a4 4 0 0 1-4 4H3" />
             </svg>
           </button>
           <button

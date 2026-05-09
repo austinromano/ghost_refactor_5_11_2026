@@ -309,6 +309,13 @@ interface AudioState {
   // to-grid call across the arrangement (clip drag, paste, duplicate, trim).
   gridDivision: number;
   setGridDivision: (divisionOfBar: number) => void;
+  // Optional loop region — when set, transport wraps from `end` back to
+  // `start` instead of running off the arrangement's end. The piano roll
+  // sets this to the selected MIDI clip's bounds so the user can hear
+  // the clip on repeat while editing. null = no clip-scoped loop; the
+  // arrangement-end wraparound in updatePosition() still applies.
+  loopRegion: { start: number; end: number } | null;
+  setLoopRegion: (region: { start: number; end: number } | null) => void;
 
   loadTrack: (trackId: string, fileId: string, projectId: string, trackBpm?: number) => Promise<void>;
   loadTrackFromBuffer: (
@@ -417,7 +424,14 @@ export const useAudioStore = create<AudioState>((set, get) => {
     if (!get().isPlaying) return;
     const elapsed = ctx.currentTime - startedAt;
     const dur = get().duration;
-    if (dur > 0 && elapsed >= dur) {
+    const region = get().loopRegion;
+    // Clip-scoped loop wins over the arrangement-end loop. When a
+    // region is set and the playhead reaches its end, restart sources
+    // at region.start so MIDI clip editing has FL-style auto-loop.
+    if (region && region.end > region.start && elapsed >= region.end) {
+      set({ currentTime: region.start });
+      startAllSources(region.start);
+    } else if (dur > 0 && elapsed >= dur) {
       // Loop: restart sources from bar 1 and keep the RAF running so the
       // playhead wraps back to 0 instead of freezing at the end.
       set({ currentTime: 0 });
@@ -796,6 +810,9 @@ export const useAudioStore = create<AudioState>((set, get) => {
       set({ gridDivision: divisionOfBar });
     },
 
+    loopRegion: null,
+    setLoopRegion: (region) => set({ loopRegion: region }),
+
     loadTrack: async (trackId, fileId, projectId, trackBpm = 0) => {
       if (audioBufferCache.has(fileId)) {
         const cachedBuf = audioBufferCache.get(fileId)!;
@@ -1043,7 +1060,14 @@ export const useAudioStore = create<AudioState>((set, get) => {
       // Resume from wherever the playhead is — either the last paused
       // position, or the currentTime set by a seek (timeline click). Falls
       // back to 0 only if neither is set.
-      const resumeAt = Math.max(0, pausedAt || get().currentTime || 0);
+      let resumeAt = Math.max(0, pausedAt || get().currentTime || 0);
+      // If a clip-scoped loop is active and the playhead sits outside
+      // it, jump to the region's start so pressing play always lands
+      // the user inside the clip they're editing.
+      const region = get().loopRegion;
+      if (region && region.end > region.start && (resumeAt < region.start || resumeAt >= region.end)) {
+        resumeAt = region.start;
+      }
       pausedAt = resumeAt;
       startAllSources(resumeAt);
       set({ isPlaying: true, currentTime: resumeAt });
