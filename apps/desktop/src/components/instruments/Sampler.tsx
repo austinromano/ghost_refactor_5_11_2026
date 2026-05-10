@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useMidiTrack } from '../../stores/midiTrackStore';
 import { useProjectStore } from '../../stores/projectStore';
 import { audioBufferCache, getAudioData } from '../../lib/audio';
@@ -182,7 +182,7 @@ function SamplerHeader({ trackName, instrumentName, onClose, onPointerDown }: {
   );
 }
 
-function SamplerBody({ projectId, trackId, inst, ensureInstrument, setInstrument, setBaseNote, setInstrumentVolume, setSamplerRange, setSamplerEnvelope, hideKeyboard }: {
+function SamplerBody({ projectId, trackId, inst, ensureInstrument, setInstrument, setBaseNote, setInstrumentVolume, setSamplerRange, setSamplerEnvelope, hideKeyboard, onRemove }: {
   projectId: string;
   trackId: string;
   inst: ReturnType<typeof useMidiTrack.getState>['instruments'][string] | undefined;
@@ -193,6 +193,9 @@ function SamplerBody({ projectId, trackId, inst, ensureInstrument, setInstrument
   setSamplerRange: (trackId: string, startOffset: number, endOffset: number) => void;
   setSamplerEnvelope: (trackId: string, env: Partial<{ attackSec: number; decaySec: number; sustainLevel: number; releaseSec: number }>) => void;
   hideKeyboard?: boolean;
+  // ✕ in the new internal header. When provided, clicking the ✕
+  // removes the Sampler from the track (chain-card use case).
+  onRemove?: () => void;
 }) {
   const onSampleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
@@ -247,9 +250,14 @@ function SamplerBody({ projectId, trackId, inst, ensureInstrument, setInstrument
       className="flex-1 min-h-0 flex flex-col"
       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
       onDrop={onSampleDrop}
+      style={{
+        // Match the reference render: deep navy gradient background.
+        background: 'linear-gradient(180deg, #1A0F2E 0%, #0E0620 100%)',
+      }}
     >
+      <SamplerInternalHeader inst={inst} onRemove={onRemove} />
       <SamplerWaveform inst={inst} trackId={trackId} setSamplerRange={setSamplerRange} />
-      <SamplerControls
+      <SamplerControlsRow
         inst={inst}
         trackId={trackId}
         setBaseNote={setBaseNote}
@@ -261,12 +269,62 @@ function SamplerBody({ projectId, trackId, inst, ensureInstrument, setInstrument
   );
 }
 
+// New internal header strip. Mirrors the reference design: small
+// magenta speaker glyph, "SAMPLER" wordmark, a pill showing the
+// loaded sample name (or "Empty"), and a ✕ on the right. The ✕ is
+// hooked to either onRemove (chain-card use) or simply hidden when
+// neither callback is provided (the floating panel still has its
+// own outer header bar).
+function SamplerInternalHeader({ inst, onRemove }: {
+  inst: ReturnType<typeof useMidiTrack.getState>['instruments'][string] | undefined;
+  onRemove?: () => void;
+}) {
+  const sampleName = inst?.fileId ? inst.name : 'Empty';
+  return (
+    <div
+      className="shrink-0 flex items-center gap-2 px-3"
+      style={{ height: 30, background: 'transparent' }}
+    >
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#E879F9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
+      </svg>
+      <span className="text-[11px] font-bold tracking-[0.18em] text-[#E879F9]">SAMPLER</span>
+      <span
+        className="px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wider truncate max-w-[160px]"
+        style={{
+          background: 'rgba(124,58,237,0.35)',
+          color: '#D8B4FE',
+          border: '1px solid rgba(168,85,247,0.45)',
+        }}
+        title={sampleName}
+      >
+        {sampleName}
+      </span>
+      <span className="ml-auto" />
+      {onRemove && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          className="w-5 h-5 flex items-center justify-center rounded text-white/55 hover:text-white hover:bg-white/[0.10] transition-colors text-[14px] leading-none"
+          title="Remove Sampler from this track"
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
+}
+
 // Embeddable variant of the Sampler — pulls store hooks itself so a
 // caller (e.g. the MIDI FX chain rail) can drop in `<EmbeddedSampler
 // trackId=… />` without wiring every setter. Hides the on-panel
 // keyboard strip by default since the inline use case is meant for a
 // device-chain row, not a standalone preview surface.
-export function EmbeddedSampler({ projectId, trackId }: { projectId: string; trackId: string }) {
+export function EmbeddedSampler({ projectId, trackId, onRemove }: {
+  projectId: string;
+  trackId: string;
+  onRemove?: () => void;
+}) {
   const inst = useMidiTrack((s) => s.instruments[trackId]);
   const ensureInstrument = useMidiTrack((s) => s.ensureInstrument);
   const setInstrument = useMidiTrack((s) => s.setInstrument);
@@ -286,6 +344,7 @@ export function EmbeddedSampler({ projectId, trackId }: { projectId: string; tra
       setSamplerRange={setSamplerRange}
       setSamplerEnvelope={setSamplerEnvelope}
       hideKeyboard
+      onRemove={onRemove}
     />
   );
 }
@@ -331,7 +390,14 @@ function SamplerWaveform({ inst, trackId, setSamplerRange }: {
     const data = inst.buffer.getChannelData(0);
     const samplesPerPixel = Math.max(1, Math.floor(data.length / w));
     const mid = h / 2;
-    ctx.fillStyle = 'rgba(168,85,247,0.85)';
+    // Magenta → purple vertical gradient under each peak. Mirrors
+    // the reference Sampler render (the bright fuchsia spread out
+    // toward the bottom, deepening to purple near the centerline).
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, 'rgba(217, 70, 239, 0.95)'); // magenta top
+    grad.addColorStop(0.5, 'rgba(168, 85, 247, 0.85)'); // mid purple
+    grad.addColorStop(1, 'rgba(124, 58, 237, 0.95)'); // deep purple bottom
+    ctx.fillStyle = grad;
     for (let x = 0; x < w; x++) {
       let max = 0;
       const start = x * samplesPerPixel;
@@ -347,6 +413,21 @@ function SamplerWaveform({ inst, trackId, setSamplerRange }: {
     ctx.fillStyle = 'rgba(255,255,255,0.06)';
     ctx.fillRect(0, mid - 0.5, w, 1);
   }, [inst?.buffer]);
+
+  // Time-marker labels along the bottom of the waveform. Step
+  // chosen so the labels never crowd: bigger samples get fewer
+  // markers so the row stays legible.
+  const timeMarkers = useMemo(() => {
+    const dur = inst?.buffer?.duration ?? 0;
+    if (dur <= 0) return [] as Array<{ pct: number; label: string }>;
+    const step = dur <= 2 ? 0.25 : dur <= 5 ? 0.5 : dur <= 12 ? 1 : Math.ceil(dur / 8);
+    const out: Array<{ pct: number; label: string }> = [];
+    for (let t = step; t < dur; t += step) {
+      const pct = (t / dur) * 100;
+      out.push({ pct, label: `${t.toFixed(t < 1 ? 2 : 1)}s` });
+    }
+    return out;
+  }, [inst?.buffer?.duration]);
 
   // Start / end markers — drag to trim. Positions are 0..1 fractions
   // of the buffer length.
@@ -426,6 +507,18 @@ function SamplerWaveform({ inst, trackId, setSamplerRange }: {
           <div className="absolute top-0" style={{ left: 1, width: 6, height: 6, background: '#A855F7', borderRadius: '0 0 2px 2px' }} />
         </div>
       )}
+      {/* Time markers along the bottom — short purple ticks plus
+          "0.5s, 1.0s, ..." labels positioned proportionally to the
+          buffer's duration. Skipped on empty patches. */}
+      {timeMarkers.map((m, i) => (
+        <div
+          key={i}
+          className="absolute pointer-events-none"
+          style={{ left: `${m.pct}%`, bottom: 0, transform: 'translateX(-50%)' }}
+        >
+          <div className="text-[8.5px] font-mono text-white/45 mb-0.5 text-center">{m.label}</div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -477,6 +570,278 @@ function SamplerControls({ inst, trackId, setBaseNote, setInstrumentVolume, setS
           onChange={(v) => setBaseNote(trackId, v)}
         />
       </div>
+    </div>
+  );
+}
+
+// New controls row matching the reference Sampler render: four
+// vertical panels — FILTER (envelope curve + stage chips), ADSR
+// knobs (A/D/S/R), VOLUME knob, ROOT NOTE display.
+function SamplerControlsRow({ inst, trackId, setBaseNote, setInstrumentVolume, setSamplerEnvelope }: {
+  inst: ReturnType<typeof useMidiTrack.getState>['instruments'][string] | undefined;
+  trackId: string;
+  setBaseNote: (trackId: string, pitch: number) => void;
+  setInstrumentVolume: (trackId: string, v: number) => void;
+  setSamplerEnvelope: (trackId: string, env: Partial<{ attackSec: number; decaySec: number; sustainLevel: number; releaseSec: number }>) => void;
+}) {
+  return (
+    <div
+      className="shrink-0 flex"
+      style={{
+        // Slightly taller than the old row since the knob sections
+        // need vertical room for label / dial / value. Top divider
+        // matches the reference design's hard separation between
+        // waveform and the controls strip.
+        height: 124,
+        background: 'rgba(0,0,0,0.25)',
+        borderTop: '1px solid rgba(255,255,255,0.06)',
+      }}
+    >
+      <FilterSection inst={inst} />
+      <AdsrKnobsSection
+        inst={inst}
+        trackId={trackId}
+        setSamplerEnvelope={setSamplerEnvelope}
+      />
+      <VolumeSection
+        value={inst?.volume ?? 1}
+        onChange={(v) => setInstrumentVolume(trackId, v)}
+      />
+      <RootNoteSection
+        value={inst?.baseNote ?? 60}
+        onChange={(v) => setBaseNote(trackId, v)}
+      />
+    </div>
+  );
+}
+
+// Filter panel — mirrors the reference render: the envelope curve
+// preview on top, stage-name chips along the bottom. The chips are
+// readouts (which segment of the envelope is which) rather than
+// independent toggles since the per-stage values live in the ADSR
+// knobs to the right.
+function FilterSection({ inst }: {
+  inst: ReturnType<typeof useMidiTrack.getState>['instruments'][string] | undefined;
+}) {
+  return (
+    <div
+      className="shrink-0 flex flex-col"
+      style={{ width: 152, borderRight: '1px solid rgba(255,255,255,0.06)' }}
+    >
+      <div className="px-2 pt-1.5 text-[9.5px] font-bold tracking-[0.18em] uppercase text-white/55">Filter</div>
+      <div className="flex-1 mx-2 mb-1 rounded" style={{ background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.05)' }}>
+        <AdsrCurve inst={inst} />
+      </div>
+      <div className="flex gap-1 px-2 pb-1.5">
+        {['ATTACK', 'DECAY', 'SUSTAIN', 'RELEASE'].map((s) => (
+          <span
+            key={s}
+            className="flex-1 text-center text-[7.5px] font-bold tracking-wider rounded px-1 py-0.5 text-white/60"
+            style={{ background: 'rgba(168,85,247,0.10)', border: '1px solid rgba(168,85,247,0.20)' }}
+          >
+            {s}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ADSR knob row — A/D/S/R as four big circular knobs with values
+// underneath. Drag any knob vertically to change its value (up =
+// higher, down = lower); ranges + units match the previous Slider
+// implementation so existing patches behave identically.
+function AdsrKnobsSection({ inst, trackId, setSamplerEnvelope }: {
+  inst: ReturnType<typeof useMidiTrack.getState>['instruments'][string] | undefined;
+  trackId: string;
+  setSamplerEnvelope: (trackId: string, env: Partial<{ attackSec: number; decaySec: number; sustainLevel: number; releaseSec: number }>) => void;
+}) {
+  return (
+    <div
+      className="flex-1 flex items-center justify-around gap-1 px-2"
+      style={{ borderRight: '1px solid rgba(255,255,255,0.06)' }}
+    >
+      <Knob
+        label="A" min={0} max={4} step={0.001}
+        value={inst?.attackSec ?? 0.005}
+        format={(v) => v >= 1 ? `${v.toFixed(2)} s` : `${(v * 1000).toFixed(v < 0.01 ? 0 : 2)} ms`}
+        onChange={(v) => setSamplerEnvelope(trackId, { attackSec: v })}
+      />
+      <Knob
+        label="D" min={0} max={4} step={0.001}
+        value={inst?.decaySec ?? 0}
+        format={(v) => v >= 1 ? `${v.toFixed(2)} s` : `${(v * 1000).toFixed(v < 0.01 ? 0 : 2)} ms`}
+        onChange={(v) => setSamplerEnvelope(trackId, { decaySec: v })}
+      />
+      <Knob
+        label="S" min={0} max={1} step={0.01}
+        value={inst?.sustainLevel ?? 1}
+        // Sustain is a 0..1 fraction; dB readout matches the
+        // reference render. -∞ at 0, 0 dB at 1.
+        format={(v) => v <= 0.0001 ? '-∞ dB' : `${(20 * Math.log10(v)).toFixed(1)} dB`}
+        onChange={(v) => setSamplerEnvelope(trackId, { sustainLevel: v })}
+      />
+      <Knob
+        label="R" min={0} max={4} step={0.001}
+        value={inst?.releaseSec ?? 0.05}
+        format={(v) => v >= 1 ? `${v.toFixed(2)} s` : `${(v * 1000).toFixed(v < 0.01 ? 0 : 0)} ms`}
+        onChange={(v) => setSamplerEnvelope(trackId, { releaseSec: v })}
+      />
+    </div>
+  );
+}
+
+function VolumeSection({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div
+      className="shrink-0 flex flex-col items-center justify-center px-3"
+      style={{ width: 96, borderRight: '1px solid rgba(255,255,255,0.06)' }}
+    >
+      <div className="text-[9.5px] font-bold tracking-[0.18em] uppercase text-white/55 mb-0.5">Volume</div>
+      <Knob
+        label="" min={0} max={1.5} step={0.01}
+        value={value}
+        format={(v) => v <= 0.0001 ? '-∞ dB' : `${(20 * Math.log10(v)).toFixed(2)} dB`}
+        onChange={onChange}
+        large
+      />
+    </div>
+  );
+}
+
+function RootNoteSection({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const noteName = useCallback((p: number): string => {
+    const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    const oct = Math.floor(p / 12) - 1;
+    return `${names[((p % 12) + 12) % 12]}${oct}`;
+  }, []);
+  // Click-and-drag the note display vertically to nudge ±1 semitone
+  // per ~6 px, matching how the knobs feel. Same drag math as Knob
+  // but pinned to integer pitches and the full MIDI range.
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const startY = e.clientY;
+    const startVal = value;
+    const onMove = (mv: PointerEvent) => {
+      const dy = startY - mv.clientY;
+      const next = Math.max(0, Math.min(127, Math.round(startVal + dy / 6)));
+      if (next !== startVal) onChange(next);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+  return (
+    <div className="shrink-0 flex flex-col items-center justify-center px-3" style={{ width: 100 }}>
+      <div className="text-[9.5px] font-bold tracking-[0.16em] uppercase text-white/55">Root Note</div>
+      <div
+        onPointerDown={onPointerDown}
+        className="my-1 px-3 py-1.5 rounded select-none cursor-ns-resize"
+        style={{
+          background: 'rgba(0,0,0,0.35)',
+          border: '1px solid rgba(168,85,247,0.30)',
+          minWidth: 64,
+          textAlign: 'center',
+        }}
+        title="Drag up / down to change the root note"
+      >
+        <span className="text-[20px] font-bold tracking-wide text-white">{noteName(value)}</span>
+      </div>
+      <div className="text-[8.5px] font-bold tracking-[0.16em] uppercase text-white/40">MIDI Note</div>
+      <div className="text-[11px] font-mono text-white/65 tabular-nums">{value}</div>
+    </div>
+  );
+}
+
+// Simple circular knob — drag vertically to change value. Renders
+// an SVG arc that fills proportionally (range mapped 0..1). Used
+// for the four ADSR stages and the volume knob in the new bottom
+// row. Keeps interaction predictable by NOT using rotational drag
+// (which trips users up when the knob is small).
+function Knob({ label, min, max, step, value, format, onChange, large }: {
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  format: (v: number) => string;
+  onChange: (v: number) => void;
+  large?: boolean;
+}) {
+  const size = large ? 50 : 42;
+  const stroke = 4;
+  const radius = (size - stroke) / 2;
+  const cx = size / 2, cy = size / 2;
+  const norm = Math.max(0, Math.min(1, (value - min) / (max - min || 1)));
+
+  // Arc spans roughly 270° from bottom-left around to bottom-right —
+  // the standard knob "look". Computed in radians; the indicator
+  // dot sits at the current angle.
+  const startAngle = Math.PI * 0.75;
+  const endAngle = Math.PI * 2.25;
+  const cur = startAngle + (endAngle - startAngle) * norm;
+
+  const arcPath = (a0: number, a1: number) => {
+    const x0 = cx + radius * Math.cos(a0);
+    const y0 = cy + radius * Math.sin(a0);
+    const x1 = cx + radius * Math.cos(a1);
+    const y1 = cy + radius * Math.sin(a1);
+    const large = a1 - a0 > Math.PI ? 1 : 0;
+    return `M ${x0} ${y0} A ${radius} ${radius} 0 ${large} 1 ${x1} ${y1}`;
+  };
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const startY = e.clientY;
+    const startVal = value;
+    const onMove = (mv: PointerEvent) => {
+      const dy = startY - mv.clientY;
+      // 100 px of vertical drag = full range. Hold shift for fine
+      // control (10 × less sensitive).
+      const sensitivity = mv.shiftKey ? 1000 : 100;
+      const next = startVal + (dy / sensitivity) * (max - min);
+      const clamped = Math.max(min, Math.min(max, next));
+      const stepped = step > 0 ? Math.round(clamped / step) * step : clamped;
+      if (Math.abs(stepped - value) >= step) onChange(stepped);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
+  const dotX = cx + radius * Math.cos(cur);
+  const dotY = cy + radius * Math.sin(cur);
+
+  return (
+    <div className="flex flex-col items-center select-none" style={{ minWidth: large ? 56 : 50 }}>
+      {label && (
+        <div className="text-[9.5px] font-bold tracking-[0.18em] uppercase text-white/55">{label}</div>
+      )}
+      <svg
+        width={size} height={size} viewBox={`0 0 ${size} ${size}`}
+        onPointerDown={onPointerDown}
+        style={{ cursor: 'ns-resize', touchAction: 'none' }}
+      >
+        {/* Background ring */}
+        <path d={arcPath(startAngle, endAngle)} stroke="rgba(255,255,255,0.10)" strokeWidth={stroke} fill="none" strokeLinecap="round" />
+        {/* Filled arc */}
+        {norm > 0 && (
+          <path d={arcPath(startAngle, cur)} stroke="#A855F7" strokeWidth={stroke} fill="none" strokeLinecap="round" style={{ filter: 'drop-shadow(0 0 3px rgba(168,85,247,0.55))' }} />
+        )}
+        {/* Inner cap */}
+        <circle cx={cx} cy={cy} r={radius - stroke - 1} fill="rgba(0,0,0,0.45)" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+        {/* Indicator dot */}
+        <circle cx={dotX} cy={dotY} r={2.5} fill="#F0ABFC" />
+      </svg>
+      <div className="text-[9.5px] font-mono tabular-nums text-white/70 mt-0.5">{format(value)}</div>
     </div>
   );
 }

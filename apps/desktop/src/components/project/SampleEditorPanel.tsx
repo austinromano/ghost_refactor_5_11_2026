@@ -416,44 +416,28 @@ function SamplerChainCard({ trackId }: { trackId: string }) {
   if (!projectId) return null;
   return (
     <div
-      className="shrink-0 rounded-xl flex flex-col overflow-hidden"
+      className="shrink-0 rounded-xl overflow-hidden flex flex-col"
       style={{
-        // Wider than an FX card so the waveform + control row fit
-        // without horizontal scroll. Height matches the trailing drop
-        // slot so the rail reads as one row.
-        width: 560,
+        // Wider than an FX card so the waveform + 4-section control
+        // row fit without horizontal scroll. Height matches the
+        // trailing drop slot so the rail reads as one row.
+        width: 620,
         height: 252,
-        background: 'linear-gradient(180deg, rgba(124,58,237,0.16) 0%, rgba(124,58,237,0.06) 100%)',
+        background: 'linear-gradient(180deg, #1A0F2E 0%, #0E0620 100%)',
         border: '1px solid rgba(168,85,247,0.35)',
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)',
       }}
     >
-      {/* Header strip — labels the device. The body below is the
-          actual Sampler UI; controls work inline. ✕ removes the
-          Sampler from this track (undoable via the toolbar). */}
-      <div
-        className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5"
-        style={{ background: 'rgba(168,85,247,0.25)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
-      >
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M3 12c1-3 2-3 3 0s2 3 3 0 2-3 3 0 2 3 3 0 2-3 3 0 2 3 3 0" />
-        </svg>
-        <span className="text-[10.5px] font-bold tracking-[0.12em] uppercase text-white">Sampler</span>
-        <span className="ml-2 text-[8.5px] font-mono text-white/40 uppercase tracking-wider">Inst</span>
-        <button
-          onClick={(e) => { e.stopPropagation(); removeInstrument(trackId); }}
-          className="ml-auto w-4 h-4 flex items-center justify-center rounded text-white/55 hover:text-white hover:bg-white/[0.12] transition-colors text-[12px] leading-none"
-          title="Remove Sampler from this track"
-        >
-          ×
-        </button>
-      </div>
-      {/* Body — actual Sampler UI inline. EmbeddedSampler hides its
-          own preview keyboard since the chain row is for editing the
-          patch, not previewing it. */}
-      <div className="flex-1 min-h-0">
-        <EmbeddedSampler projectId={projectId} trackId={trackId} />
-      </div>
+      {/* The embedded Sampler renders its own internal header
+          (icon + SAMPLER + sample-name pill + ✕), waveform with
+          time markers, and the FILTER / ADSR / VOLUME / ROOT NOTE
+          control row. Removing via the ✕ unhooks the instrument
+          and is undoable from the toolbar. */}
+      <EmbeddedSampler
+        projectId={projectId}
+        trackId={trackId}
+        onRemove={() => removeInstrument(trackId)}
+      />
     </div>
   );
 }
