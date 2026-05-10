@@ -723,9 +723,15 @@ export const useMidiTrack = create<MidiTrackState>((set, get) => ({
 
       // Backward jump → loop / seek / rewind. Wipe the dedupe set so
       // notes that fired in the previous pass can fire again at their
-      // new (looped) project times.
-      if (lastProjectNow >= 0 && projectNow < lastProjectNow - 0.05) {
+      // new (looped) project times. Also stop any sources still in
+      // flight from the pre-wrap window so a stale tail of notes
+      // scheduled near the loop end doesn't bleed into the new pass.
+      const jumpedBackward = lastProjectNow >= 0 && projectNow < lastProjectNow - 0.05;
+      if (jumpedBackward) {
         queued.clear();
+        for (const src of activeSources) safeStop(src);
+        activeSources.clear();
+        trackVoices.clear();
       }
       lastProjectNow = projectNow;
 
@@ -741,10 +747,16 @@ export const useMidiTrack = create<MidiTrackState>((set, get) => ({
 
         for (const note of clip.notes) {
           const noteAbsTime = clip.startSec + note.startSec;
-          // Only schedule notes that fall inside the lookahead window.
-          // The 5 ms slack on the trailing edge matches the drum rack
-          // and absorbs jitter in setInterval timing.
-          if (noteAbsTime < projectNow - 0.005) continue;
+          // Schedule any note inside [projectNow - 50ms, projectNow +
+          // lookahead]. The 50 ms past-time tolerance covers the
+          // worst-case gap between a transport loop wrap (which
+          // happens in updatePosition's RAF) and the next scheduler
+          // tick (25 ms interval, plus possible drift). Without it,
+          // notes sitting exactly on region.start get dropped because
+          // by the time the post-wrap tick fires, projectNow has
+          // already advanced past them. The dedupe `queued` set keeps
+          // this from re-firing the same note in steady-state play.
+          if (noteAbsTime < projectNow - 0.050) continue;
           if (noteAbsTime > horizonProjectTime) continue;
 
           const queueKey = `${clip.id}:${note.id}`;
