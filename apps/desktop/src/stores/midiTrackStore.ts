@@ -525,6 +525,7 @@ export const useMidiTrack = create<MidiTrackState>((set, get) => ({
   selectClip: (clipId) => set({ selectedClipId: clipId }),
 
   createClipAt: (trackId, startSec, lengthSec) => {
+    get().captureUndoSnapshot('Add MIDI clip');
     const id = crypto.randomUUID();
     set((s) => ({
       clips: [...s.clips, {
@@ -547,6 +548,7 @@ export const useMidiTrack = create<MidiTrackState>((set, get) => ({
   duplicateClip: (clipId, atSec) => {
     const src = get().clips.find((c) => c.id === clipId);
     if (!src) return null;
+    get().captureUndoSnapshot('Duplicate MIDI clip');
     const id = crypto.randomUUID();
     set((s) => ({
       clips: [...s.clips, {
