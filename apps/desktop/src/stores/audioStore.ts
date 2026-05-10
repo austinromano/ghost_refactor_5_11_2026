@@ -951,6 +951,28 @@ export const useAudioStore = create<AudioState>((set, get) => {
           m.set(id, next);
         });
         set({ loadedTracks: m });
+
+        // Bar-lock the playhead and loop region too — without this,
+        // every clip has shifted to the new tempo's grid but the
+        // seconds-based playhead is still at the old position, so
+        // restartIfPlaying() below resumes off-grid. Scale by the
+        // same ratio (oldBpm / newBpm) so a playhead that sat on
+        // bar 3 stays on bar 3, just at a different second-count.
+        const ctx = getCtx();
+        if (get().isPlaying) {
+          const oldProjectTime = ctx.currentTime - startedAt;
+          const newProjectTime = oldProjectTime * ratio;
+          startedAt = ctx.currentTime - newProjectTime;
+          set({ currentTime: newProjectTime });
+        } else {
+          pausedAt = pausedAt * ratio;
+          set({ currentTime: pausedAt });
+        }
+        const region = get().loopRegion;
+        if (region) {
+          set({ loopRegion: { start: region.start * ratio, end: region.end * ratio } });
+        }
+
         // Drum rack lives in a sibling store. Dispatch instead of import
         // to avoid the audioStore → drumRackStore circular dep.
         if (typeof window !== 'undefined') {
