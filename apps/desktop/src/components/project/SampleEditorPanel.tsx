@@ -419,10 +419,12 @@ function SamplerChainCard({ trackId }: { trackId: string }) {
       className="shrink-0 rounded-xl overflow-hidden flex flex-col"
       style={{
         // Wider than an FX card so the waveform + 4-section control
-        // row fit without horizontal scroll. Height matches the
-        // trailing drop slot so the rail reads as one row.
+        // row fit without horizontal scroll. Height accommodates the
+        // header (30) + waveform (130) + controls row (~124) plus a
+        // little slack so knob value readouts and the MIDI NOTE
+        // number under the root-note display aren't clipped.
         width: 620,
-        height: 252,
+        height: 296,
         background: 'linear-gradient(180deg, #1A0F2E 0%, #0E0620 100%)',
         border: '1px solid rgba(168,85,247,0.35)',
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)',
