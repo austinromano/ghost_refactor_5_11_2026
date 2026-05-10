@@ -22,14 +22,20 @@ const LOG_MIN = Math.log10(20);     // 20 Hz
 const LOG_MAX = Math.log10(20000);  // 20 kHz
 const GAIN_RANGE = 12;              // ±12 dB clamp
 
-const VIEW_W = 280;
-const VIEW_H = 130;
-const PAD_X = 12;
-const PAD_Y = 8;
-const PLOT_X = PAD_X;
-const PLOT_Y = PAD_Y;
-const PLOT_W = VIEW_W - PAD_X * 2;
-const PLOT_H = VIEW_H - PAD_Y * 2;
+// Bigger SVG canvas so axis labels (+12 dB / 20 Hz / etc.) have room
+// on the left + bottom without crowding the plot area. The plot
+// itself keeps roughly the same proportions; the extra space is the
+// gutter that holds the dB ticks on the left and the Hz ticks below.
+const VIEW_W = 400;
+const VIEW_H = 152;
+const PAD_X_LEFT = 30;
+const PAD_X_RIGHT = 8;
+const PAD_Y_TOP = 6;
+const PAD_Y_BOTTOM = 16;
+const PLOT_X = PAD_X_LEFT;
+const PLOT_Y = PAD_Y_TOP;
+const PLOT_W = VIEW_W - PAD_X_LEFT - PAD_X_RIGHT;
+const PLOT_H = VIEW_H - PAD_Y_TOP - PAD_Y_BOTTOM;
 
 // Each band's "Q" — width of its Gaussian contribution in log-frequency
 // units. ~0.55 octaves is a reasonable visual peaking curve.
@@ -264,13 +270,13 @@ export default function ChannelEqPanel({
     <div
       className="rounded-xl select-none"
       style={{
-        width: VIEW_W + 24,
+        width: 460,
         // Locked to PANEL_HEIGHT — CompressorPanel + ReverbPanel +
         // SamplerChainCard all use 296 so every device card lines up
         // at the same pixel height in the chain rail.
         height: 296,
-        background: 'rgba(15, 12, 32, 0.92)',
-        border: '1px solid rgba(168, 134, 255, 0.18)',
+        background: 'linear-gradient(180deg, #1A0F2E 0%, #100823 100%)',
+        border: '1px solid rgba(168, 134, 255, 0.22)',
         boxShadow: '0 8px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)',
         opacity: dimmed,
         transition: 'opacity 120ms linear',
@@ -302,25 +308,16 @@ export default function ChannelEqPanel({
             </svg>
           </button>
         )}
-        <span
-          className="w-3 h-3 rotate-45"
-          style={{
-            background: 'linear-gradient(135deg, #c084fc 0%, #7c3aed 100%)',
-            borderRadius: 2,
-            boxShadow: `0 0 6px ${accent}`,
-          }}
-        />
-        <span className="text-[12px] font-semibold text-white/90">Channel EQ</span>
+        <span className="text-[11px] font-bold tracking-[0.16em] text-[#E879F9]">CHANNEL EQ</span>
         <button
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); toggleBypass(laneKey, effect.id); }}
           title={effect.bypassed ? 'Enable' : 'Bypass'}
-          className="w-5 h-5 flex items-center justify-center rounded-full transition-colors hover:bg-white/10"
-          style={{ color: effect.bypassed ? 'rgba(255,255,255,0.45)' : accent }}
+          className="w-4 h-4 flex items-center justify-center rounded-full transition-colors hover:bg-white/10"
+          style={{ color: effect.bypassed ? 'rgba(255,255,255,0.45)' : '#E879F9' }}
         >
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <circle cx="12" cy="12" r="10" />
-            <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
           </svg>
         </button>
         <span className="ml-auto" />
@@ -396,17 +393,43 @@ export default function ChannelEqPanel({
               strokeWidth={1}
             />
           ))}
-          {/* Faint horizontal grid (every 6 dB) */}
+          {/* Faint horizontal grid (every 6 dB) + dB axis labels on
+              the left so the user can read the gain scale at a glance. */}
           {[-12, -6, 0, 6, 12].map((dB) => (
-            <line
-              key={`hg-${dB}`}
-              x1={PLOT_X}
-              y1={gainToY(dB)}
-              x2={PLOT_X + PLOT_W}
-              y2={gainToY(dB)}
-              stroke={dB === 0 ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.03)'}
-              strokeWidth={1}
-            />
+            <g key={`hg-${dB}`}>
+              <line
+                x1={PLOT_X}
+                y1={gainToY(dB)}
+                x2={PLOT_X + PLOT_W}
+                y2={gainToY(dB)}
+                stroke={dB === 0 ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.03)'}
+                strokeWidth={1}
+              />
+              <text
+                x={PLOT_X - 4}
+                y={gainToY(dB) + 3}
+                textAnchor="end"
+                fontSize={7.5}
+                fill="rgba(255,255,255,0.40)"
+                fontFamily="ui-monospace, monospace"
+              >
+                {dB > 0 ? `+${dB} dB` : dB === 0 ? '0' : `${dB} dB`}
+              </text>
+            </g>
+          ))}
+          {/* Hz axis labels along the bottom of the plot. */}
+          {[20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000].map((f) => (
+            <text
+              key={`xl-${f}`}
+              x={freqToX(f)}
+              y={PLOT_Y + PLOT_H + 11}
+              textAnchor="middle"
+              fontSize={7.5}
+              fill="rgba(255,255,255,0.40)"
+              fontFamily="ui-monospace, monospace"
+            >
+              {f >= 1000 ? `${f / 1000}k` : f}
+            </text>
           ))}
 
           {/* Per-band spotlight beams — vertical gradient strips that
@@ -490,21 +513,175 @@ export default function ChannelEqPanel({
         </svg>
       </div>
 
-      {/* Band readouts */}
-      <div className="grid grid-cols-4 gap-2 px-3 pt-1 pb-3">
+      {/* Per-band controls — power square + label + gain knob + freq /
+          gain readout + filter-type chip. Mirrors the reference EQ
+          render. Drag any knob vertically to change that band's gain;
+          shift = fine. Frequency stays read-only here (use the graph
+          nodes to slide a band horizontally). */}
+      <div className="grid grid-cols-4 gap-1 px-2 pt-1 pb-1">
         {bands.map((band, idx) => (
-          <div key={idx} className="flex flex-col items-center text-center">
-            <span className="text-[9.5px] text-white/45 uppercase tracking-wider">{EQ_BAND_LABELS[idx]}</span>
-            <span className="text-[12px] font-semibold text-white/90 tabular-nums mt-0.5">{formatFreq(band.freq)}</span>
-            <span
-              className="text-[11px] tabular-nums mt-1"
-              style={{ color: band.gain === 0 ? 'rgba(255,255,255,0.5)' : (band.gain > 0 ? '#c4b5fd' : '#a78bfa') }}
-            >
-              {formatGain(band.gain)}
-            </span>
-          </div>
+          <BandCell
+            key={idx}
+            label={EQ_BAND_LABELS[idx]}
+            band={band}
+            onGain={(v) => setEqBand(laneKey, effect.id, idx, { gain: v })}
+          />
         ))}
       </div>
+
+      {/* Bottom toolbar — Analyzer / Pre toggles, GLOBAL GAIN trim, and
+          a Bypass pill. The analyser + global-gain are visual only for
+          now; bypass is wired to the existing toggleBypass action. */}
+      <div
+        className="flex items-center gap-3 px-3"
+        style={{ height: 28, borderTop: '1px solid rgba(255,255,255,0.06)' }}
+      >
+        <ToolbarToggle label="Analyzer" defaultOn />
+        <ToolbarToggle label="Pre" />
+        <span className="ml-auto" />
+        <span className="text-[8.5px] font-bold tracking-[0.16em] uppercase text-white/45">Global Gain</span>
+        <span className="text-[10px] font-mono text-white/65 tabular-nums">0.0 dB</span>
+        <button
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); toggleBypass(laneKey, effect.id); }}
+          className="px-2 py-0.5 rounded text-[9.5px] font-bold tracking-wider uppercase transition-colors"
+          style={{
+            background: effect.bypassed ? 'rgba(255,255,255,0.06)' : 'rgba(232,121,249,0.18)',
+            color: effect.bypassed ? 'rgba(255,255,255,0.55)' : '#E879F9',
+            border: `1px solid ${effect.bypassed ? 'rgba(255,255,255,0.10)' : 'rgba(232,121,249,0.40)'}`,
+          }}
+        >
+          Bypass
+        </button>
+      </div>
     </div>
+  );
+}
+
+// Single band cell — power square + label up top, gain knob below,
+// readouts + filter chip underneath. Knob drag is vertical with the
+// same shift-fine pattern the Sampler uses.
+function BandCell({ label, band, onGain }: {
+  label: string;
+  band: { freq: number; gain: number };
+  onGain: (v: number) => void;
+}) {
+  const accent = '#E879F9';
+  return (
+    <div className="flex flex-col items-center text-center rounded-md py-1 px-1" style={{ background: 'rgba(0,0,0,0.18)' }}>
+      <div className="flex items-center gap-1 self-start">
+        <span
+          className="w-2 h-2 rounded-sm"
+          style={{ background: accent, boxShadow: `0 0 4px ${accent}` }}
+        />
+        <span className="text-[8.5px] font-bold tracking-[0.14em] uppercase text-white/70">{label}</span>
+      </div>
+      <EqKnob value={band.gain} onChange={onGain} />
+      <div className="flex items-baseline gap-1">
+        <span className="text-[9.5px] font-mono tabular-nums text-white/85">{formatFreq(band.freq)}</span>
+        <span
+          className="text-[9px] font-mono tabular-nums"
+          style={{ color: band.gain === 0 ? 'rgba(255,255,255,0.45)' : accent }}
+        >
+          {formatGain(band.gain)}
+        </span>
+      </div>
+      <div className="mt-0.5 px-1 py-0.5 rounded text-[7.5px] font-bold tracking-wider uppercase"
+        style={{
+          background: 'rgba(232,121,249,0.10)',
+          color: 'rgba(232,121,249,0.85)',
+          border: '1px solid rgba(232,121,249,0.20)',
+        }}>
+        {label === 'LOW' || label === 'HIGH' ? '12 dB/Oct' : 'Q 1.0'}
+      </div>
+    </div>
+  );
+}
+
+function EqKnob({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  // ±12 dB range mapped to a 0..1 visual position around a 270°
+  // arc. Vertical drag changes the gain; double-click resets to 0.
+  const size = 38;
+  const stroke = 3;
+  const radius = (size - stroke) / 2;
+  const cx = size / 2, cy = size / 2;
+  const norm = (value + GAIN_RANGE) / (GAIN_RANGE * 2);
+  const startAngle = Math.PI * 0.75;
+  const endAngle = Math.PI * 2.25;
+  const cur = startAngle + (endAngle - startAngle) * norm;
+  const zeroAngle = startAngle + (endAngle - startAngle) * 0.5;
+  const arcPath = (a0: number, a1: number) => {
+    const x0 = cx + radius * Math.cos(a0);
+    const y0 = cy + radius * Math.sin(a0);
+    const x1 = cx + radius * Math.cos(a1);
+    const y1 = cy + radius * Math.sin(a1);
+    const big = Math.abs(a1 - a0) > Math.PI ? 1 : 0;
+    const sweep = a1 > a0 ? 1 : 0;
+    return `M ${x0} ${y0} A ${radius} ${radius} 0 ${big} ${sweep} ${x1} ${y1}`;
+  };
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const startY = e.clientY;
+    const startVal = value;
+    const onMove = (mv: PointerEvent) => {
+      const dy = startY - mv.clientY;
+      const sensitivity = mv.shiftKey ? 600 : 100;
+      const next = startVal + (dy / sensitivity) * (GAIN_RANGE * 2);
+      const clamped = Math.max(-GAIN_RANGE, Math.min(GAIN_RANGE, next));
+      onChange(clamped);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+  const dotX = cx + (radius - 1) * Math.cos(cur);
+  const dotY = cy + (radius - 1) * Math.sin(cur);
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      onPointerDown={onPointerDown}
+      onDoubleClick={() => onChange(0)}
+      style={{ cursor: 'ns-resize', touchAction: 'none' }}
+    >
+      <path d={arcPath(startAngle, endAngle)} stroke="rgba(255,255,255,0.10)" strokeWidth={stroke} fill="none" strokeLinecap="round" />
+      {value !== 0 && (
+        <path
+          d={arcPath(zeroAngle, cur)}
+          stroke="#E879F9"
+          strokeWidth={stroke}
+          fill="none"
+          strokeLinecap="round"
+          style={{ filter: 'drop-shadow(0 0 3px rgba(232,121,249,0.55))' }}
+        />
+      )}
+      <circle cx={cx} cy={cy} r={radius - stroke - 1} fill="rgba(0,0,0,0.45)" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+      <circle cx={dotX} cy={dotY} r={2.2} fill="#F0ABFC" />
+    </svg>
+  );
+}
+
+function ToolbarToggle({ label, defaultOn }: { label: string; defaultOn?: boolean }) {
+  const [on, setOn] = useState(!!defaultOn);
+  const accent = '#E879F9';
+  return (
+    <button
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => { e.stopPropagation(); setOn((v) => !v); }}
+      className="flex items-center gap-1 text-[9px] font-bold tracking-wider uppercase transition-colors"
+      style={{ color: on ? accent : 'rgba(255,255,255,0.45)' }}
+    >
+      <span
+        className="inline-block w-1.5 h-1.5 rounded-full"
+        style={{ background: on ? accent : 'rgba(255,255,255,0.20)' }}
+      />
+      {label}
+    </button>
   );
 }
