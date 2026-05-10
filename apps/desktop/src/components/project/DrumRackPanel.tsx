@@ -7,6 +7,7 @@ import { api } from '../../lib/api';
 import { getCtx } from '../../stores/audio/graph';
 import { sendSessionAction } from '../../lib/socket';
 import { SAMPLE_LIBRARY_DRAG_MIME } from '../layout/SampleLibrarySection';
+import { DRUM_RACK_FX_KEY } from '../../stores/effectsStore';
 
 // Drum-rack / step-sequencer panel. Lives at the bottom of the
 // arrangement.
@@ -80,6 +81,23 @@ export default function DrumRackPanel({ projectId }: { projectId: string }) {
     else stopScheduler();
     return () => { stopScheduler(); };
   }, [isPlaying, projectId, startScheduler, stopScheduler]);
+
+  // Auto-close when the user shifts focus to a different track / bus.
+  // The drum rack panel takes a lot of vertical space and shouldn't
+  // hang around once the user is editing something else. Close when:
+  //   - selectedBusId moves to a non-drum context (master, master-bus,
+  //     or any MIDI track id), OR
+  //   - selectedTrackIds becomes non-empty (an audio clip was clicked)
+  // Both of those signals mean "the user picked another lane", which
+  // is exactly when FL Studio collapses the channel-rack window too.
+  const selectedBusId = useAudioStore((s) => s.selectedBusId);
+  const audioClipSelected = useAudioStore((s) => s.selectedTrackIds.size > 0);
+  useEffect(() => {
+    if (!open) return;
+    const focusedAwayFromDrums = (selectedBusId !== null && selectedBusId !== DRUM_RACK_FX_KEY)
+      || audioClipSelected;
+    if (focusedAwayFromDrums) setOpen(false);
+  }, [open, selectedBusId, audioClipSelected, setOpen]);
 
   const selectedClip = clips.find((c) => c.id === selectedClipId) ?? null;
   const patternSteps = selectedClip?.patternSteps ?? 16;
