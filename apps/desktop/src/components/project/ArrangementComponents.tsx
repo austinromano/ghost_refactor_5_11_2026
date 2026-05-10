@@ -9,6 +9,7 @@ import { getSocket } from '../../lib/socket';
 import Waveform from '../tracks/Waveform';
 import Avatar from '../common/Avatar';
 import { useDrumRack, getRowAnalyser } from '../../stores/drumRackStore';
+import { useMidiTrack } from '../../stores/midiTrackStore';
 import MidiLane from './MidiLane';
 import { getDrumAnalyser } from '../../stores/audio/graph';
 import { SAMPLE_LIBRARY_DRAG_MIME } from '../layout/SampleLibrarySection';
@@ -375,6 +376,40 @@ export function ArrangementScrollView({ children, showAll }: { children: React.R
   const isPlaying = useAudioStore((s) => s.isPlaying);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Right-click → "+ Add track" context menu. Track headers, lanes,
+  // and clips all stopPropagation on their own right-click handlers
+  // so this only fires when the user clicks empty arrangement space.
+  // Anchored in screen coords; window-level mousedown / Escape
+  // dismiss it. Adding routes through the same api.addTrack +
+  // ghost-refresh-project flow as AddMidiTrackButton.
+  const [addMenu, setAddMenu] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!addMenu) return;
+    const onDown = () => setAddMenu(null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setAddMenu(null); };
+    window.addEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [addMenu]);
+
+  const addTrack = async (type: 'audio' | 'midi') => {
+    const projectId = useProjectStore.getState().currentProject?.id;
+    if (!projectId) return;
+    const name = type === 'midi' ? 'MIDI' : 'Audio';
+    try {
+      const result: any = await api.addTrack(projectId, { name, type: type as any } as any);
+      // MIDI tracks need an instrument record so the lane can render
+      // and accept a sample drop on first click. Audio tracks don't.
+      if (type === 'midi' && result?.id) {
+        useMidiTrack.getState().ensureInstrument(result.id);
+      }
+      window.dispatchEvent(new CustomEvent('ghost-refresh-project'));
+    } catch { /* server error — user can retry */ }
+  };
+
   // Inner wrapper is wider than the viewport so only BARS_PER_VIEW bars show
   // at a time. When showAll is on, the whole arrangement is fit to the
   // viewport. When numBars ≤ BARS_PER_VIEW, we already fit without scrolling.
@@ -411,10 +446,52 @@ export function ArrangementScrollView({ children, showAll }: { children: React.R
       ref={scrollRef}
       className="relative overflow-x-auto"
       style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(124,58,237,0.3) transparent' }}
+      onContextMenu={(e) => {
+        // Lane / track-header / clip onContextMenu handlers all
+        // preventDefault() + stopPropagation, so this only fires on
+        // empty arrangement space — exactly where the user expects an
+        // "add track" affordance.
+        e.preventDefault();
+        setAddMenu({ x: e.clientX, y: e.clientY });
+      }}
     >
       <div className="relative" style={{ width: `${innerWidthPct}%` }}>
         {children}
       </div>
+      {addMenu && (
+        <div
+          onMouseDown={(e) => e.stopPropagation()}
+          className="fixed z-[60] min-w-[170px] rounded-md py-1 shadow-[0_8px_24px_rgba(0,0,0,0.5)] backdrop-blur-md"
+          style={{
+            left: addMenu.x, top: addMenu.y,
+            background: 'rgba(20, 12, 30, 0.96)',
+            border: '1px solid rgba(255,255,255,0.08)',
+          }}
+        >
+          <button
+            onClick={() => { setAddMenu(null); addTrack('midi'); }}
+            className="w-full px-3 py-1.5 text-[13px] text-left text-white/80 hover:bg-white/[0.06] hover:text-white transition-colors flex items-center gap-2"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="6" width="20" height="12" rx="1" />
+              <line x1="6" y1="6" x2="6" y2="14" />
+              <line x1="10" y1="6" x2="10" y2="14" />
+              <line x1="14" y1="6" x2="14" y2="14" />
+              <line x1="18" y1="6" x2="18" y2="14" />
+            </svg>
+            Add MIDI track
+          </button>
+          <button
+            onClick={() => { setAddMenu(null); addTrack('audio'); }}
+            className="w-full px-3 py-1.5 text-[13px] text-left text-white/80 hover:bg-white/[0.06] hover:text-white transition-colors flex items-center gap-2"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 12h2l3-9 4 18 3-9h6" />
+            </svg>
+            Add audio track
+          </button>
+        </div>
+      )}
     </div>
   );
 }
