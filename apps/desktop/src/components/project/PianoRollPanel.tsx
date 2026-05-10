@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { motion, useDragControls } from 'framer-motion';
 import { useMidiTrack } from '../../stores/midiTrackStore';
 import { useAudioStore } from '../../stores/audioStore';
 import { useProjectStore } from '../../stores/projectStore';
@@ -10,6 +11,7 @@ import PianoRollKeyboard, { previewKey } from './PianoRollKeyboard';
 import PianoRollNote from './PianoRollNote';
 import VelocityLane from './VelocityLane';
 import { SAMPLE_LIBRARY_DRAG_MIME } from '../layout/SampleLibrarySection';
+import { DRUM_RACK_FX_KEY } from '../../stores/effectsStore';
 
 // Piano-roll panel — FL-Studio styled. Sits at the bottom of the
 // arrangement column, parallel to DrumRackPanel. v1 manages its own
@@ -244,6 +246,36 @@ export default function PianoRollPanel({ projectId }: Props) {
   const [audition, setAudition] = useState(true);
   const [autoLoop, setAutoLoop] = useState(true);
   const [marqueeRect, setMarqueeRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+
+  // Floating mode — when on, the panel detaches from the arrangement
+  // column and renders as a draggable fixed-position window. Persisted
+  // in localStorage so the popped-out state survives a refresh. While
+  // floating, the panel ignores the auto-close-on-focus-shift rule
+  // below; the user explicitly wants it to stay around.
+  const [floating, setFloating] = useState(() => {
+    try { return localStorage.getItem('ghost_piano_roll_float') === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('ghost_piano_roll_float', floating ? '1' : '0'); } catch { /* ignore */ }
+  }, [floating]);
+  const dragControls = useDragControls();
+
+  // Auto-close when the user shifts focus to a non-MIDI lane while
+  // docked. selectedBusId carries the current FX-edit context: the
+  // `master` / `master-bus` / `__drum_rack__` sentinels mean the user
+  // picked something else, and a non-empty selectedTrackIds means an
+  // audio clip was clicked. Either signal closes the docked panel.
+  // Floating mode skips this — the user explicitly opted in to keep
+  // it around.
+  const focusedAwayBusId = useAudioStore((s) => s.selectedBusId);
+  const audioClipSelected = useAudioStore((s) => s.selectedTrackIds.size > 0);
+  useEffect(() => {
+    if (!open || floating) return;
+    const isNonMidiBus = focusedAwayBusId === 'master'
+      || focusedAwayBusId === 'master-bus'
+      || focusedAwayBusId === DRUM_RACK_FX_KEY;
+    if (isNonMidiBus || audioClipSelected) setOpen(false);
+  }, [open, floating, focusedAwayBusId, audioClipSelected, setOpen]);
 
   // --- Auto-loop the selected clip --------------------------------
   // When the panel is open with a clip selected and auto-loop is on,
@@ -765,42 +797,61 @@ export default function PianoRollPanel({ projectId }: Props) {
 
   if (!open) return null;
 
-  return (
+  const panelInner = (
     <div
       ref={panelRef}
-      className="w-full flex flex-col select-none relative"
+      className="flex flex-col select-none relative"
       style={{
-        height: panelHeight,
+        // Floating fills its parent (the motion.div fixed-size
+        // container); docked uses the user's vertical-resized height
+        // and stretches to the column's full width.
+        height: floating ? '100%' : panelHeight,
+        width: floating ? '100%' : '100%',
         background: COLOR_BG,
-        // Tinted top border when the panel is the active surface — a
-        // quiet "this is where your shortcuts go" indicator without
-        // being a distracting glow.
         borderTop: focused
           ? '1px solid rgba(168,85,247,0.55)'
           : '1px solid rgba(0,0,0,0.6)',
+        borderRadius: floating ? 16 : 0,
+        overflow: floating ? 'hidden' : undefined,
       }}
     >
-      {/* Resize handle */}
-      <div
-        className="w-full cursor-ns-resize"
-        style={{ height: 4, background: 'rgba(255,255,255,0.05)' }}
-        onPointerDown={(e) => {
-          const startY = e.clientY;
-          const startH = panelHeight;
-          const onMove = (mv: PointerEvent) => setPanelHeight(startH - (mv.clientY - startY));
-          const onUp = () => {
-            window.removeEventListener('pointermove', onMove);
-            window.removeEventListener('pointerup', onUp);
-          };
-          window.addEventListener('pointermove', onMove);
-          window.addEventListener('pointerup', onUp);
-        }}
-      />
+      {/* Resize handle — only meaningful while docked. In floating
+          mode the panel is sized by its motion.div container. */}
+      {!floating && (
+        <div
+          className="w-full cursor-ns-resize"
+          style={{ height: 4, background: 'rgba(255,255,255,0.05)' }}
+          onPointerDown={(e) => {
+            const startY = e.clientY;
+            const startH = panelHeight;
+            const onMove = (mv: PointerEvent) => setPanelHeight(startH - (mv.clientY - startY));
+            const onUp = () => {
+              window.removeEventListener('pointermove', onMove);
+              window.removeEventListener('pointerup', onUp);
+            };
+            window.addEventListener('pointermove', onMove);
+            window.addEventListener('pointerup', onUp);
+          }}
+        />
+      )}
 
       {/* Header */}
       <div
         className="flex items-center gap-2 px-3"
-        style={{ height: HEADER_HEIGHT, background: COLOR_HEADER, borderBottom: '1px solid rgba(0,0,0,0.55)' }}
+        style={{
+          height: HEADER_HEIGHT,
+          background: COLOR_HEADER,
+          borderBottom: '1px solid rgba(0,0,0,0.55)',
+          cursor: floating ? 'grab' : 'default',
+          touchAction: floating ? 'none' : undefined,
+        }}
+        onPointerDown={floating ? (e) => {
+          // Don't start a drag from clicks on header buttons / inputs;
+          // dragControls.start runs the framer drag from this pointer.
+          if (e.button !== 0) return;
+          if ((e.target as HTMLElement).closest('button, input, select')) return;
+          dragControls.start(e);
+        } : undefined}
         onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
         onDrop={onHeaderDrop}
       >
@@ -923,6 +974,35 @@ export default function PianoRollPanel({ projectId }: Props) {
               <polyline points="7 23 3 19 7 15" />
               <path d="M21 13v2a4 4 0 0 1-4 4H3" />
             </svg>
+          </button>
+          {/* Pop-out toggle — switches between docked (default, auto-
+              closes on focus shift) and a floating draggable window
+              (stays open until ✕). */}
+          <button
+            onClick={() => setFloating((v) => !v)}
+            title={floating ? 'Dock back into the arrangement' : 'Pop out as a floating window — drag anywhere'}
+            className="flex items-center justify-center px-1.5 py-0.5 rounded border"
+            style={{
+              background: floating ? 'rgba(168,85,247,0.35)' : 'rgba(255,255,255,0.04)',
+              borderColor: floating ? 'rgba(168,85,247,0.5)' : 'rgba(255,255,255,0.08)',
+              color: floating ? '#fff' : 'rgba(255,255,255,0.55)',
+            }}
+          >
+            {floating ? (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="4 14 10 14 10 20" />
+                <polyline points="20 10 14 10 14 4" />
+                <line x1="14" y1="10" x2="21" y2="3" />
+                <line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+            ) : (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 3 21 3 21 9" />
+                <polyline points="9 21 3 21 3 15" />
+                <line x1="21" y1="3" x2="14" y2="10" />
+                <line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+            )}
           </button>
           <button
             onClick={() => setOpen(false)}
@@ -1113,4 +1193,33 @@ export default function PianoRollPanel({ projectId }: Props) {
       )}
     </div>
   );
+
+  // Floating mode wraps the panel in a fixed-position framer-motion
+  // drag container. Drag is gated to the header (pointerDown via
+  // dragControls), so the grid + buttons stay click-clean.
+  if (floating) {
+    return (
+      <motion.div
+        drag
+        dragMomentum={false}
+        dragElastic={0.04}
+        dragControls={dragControls}
+        dragListener={false}
+        className="fixed z-[60]"
+        style={{
+          top: 96,
+          left: 'calc(50vw - 480px)',
+          width: 960,
+          maxWidth: 'calc(100vw - 32px)',
+          height: Math.max(360, panelHeight),
+          boxShadow: '0 20px 60px rgba(0,0,0,0.55), 0 0 0 1px rgba(168,134,255,0.18)',
+          borderRadius: 16,
+        }}
+      >
+        {panelInner}
+      </motion.div>
+    );
+  }
+
+  return panelInner;
 }
