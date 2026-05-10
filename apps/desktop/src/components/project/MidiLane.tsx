@@ -52,6 +52,8 @@ export default function MidiLane({ laneKey, track, laneHeight, projectId }: Prop
   const duplicateClip = useMidiTrack((s) => s.duplicateClip);
   const ghostClipIds = useMidiTrack((s) => s.ghostClipIds);
   const toggleGhostClip = useMidiTrack((s) => s.toggleGhostClip);
+  const setLoopRegion = useAudioStore((s) => s.setLoopRegion);
+  const loopRegion = useAudioStore((s) => s.loopRegion);
   const selectClip = useMidiTrack((s) => s.selectClip);
   const openSampler = useMidiTrack((s) => s.openSampler);
   const setSelectedBusId = useAudioStore((s) => s.setSelectedBusId);
@@ -504,7 +506,17 @@ export default function MidiLane({ laneKey, track, laneHeight, projectId }: Prop
             onDelete={() => deleteClip(clip.id)}
             onDuplicate={() => duplicateClip(clip.id, clip.startSec + clip.lengthSec)}
             onToggleGhost={() => toggleGhostClip(clip.id)}
+            onToggleLoopSection={() => {
+              const isCurrent = !!loopRegion
+                && Math.abs(loopRegion.start - clip.startSec) < 1e-3
+                && Math.abs(loopRegion.end - (clip.startSec + clip.lengthSec)) < 1e-3;
+              if (isCurrent) setLoopRegion(null);
+              else setLoopRegion({ start: clip.startSec, end: clip.startSec + clip.lengthSec });
+            }}
             isGhost={ghostClipIds.includes(clip.id)}
+            isLoopedSection={!!loopRegion
+              && Math.abs(loopRegion.start - clip.startSec) < 1e-3
+              && Math.abs(loopRegion.end - (clip.startSec + clip.lengthSec)) < 1e-3}
             xToTime={xToTime}
           />
         ))}

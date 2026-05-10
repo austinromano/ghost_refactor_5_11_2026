@@ -1639,10 +1639,34 @@ function DrumClipBlock({
     window.addEventListener('mouseup', onUp);
   };
 
+  // Right-click context menu — Delete + Loop this section. Replaces
+  // the previous instant-delete on right-click which was too easy to
+  // hit by accident. State holds the menu's anchor in screen coords;
+  // a window-level mousedown / Escape dismisses it.
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const onDown = () => setMenu(null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenu(null); };
+    window.addEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [menu]);
+
+  const setLoopRegion = useAudioStore((s) => s.setLoopRegion);
+  const loopRegion = useAudioStore((s) => s.loopRegion);
+  const isLoopedSection = !!loopRegion
+    && Math.abs(loopRegion.start - startSec) < 1e-3
+    && Math.abs(loopRegion.end - (startSec + lengthSec)) < 1e-3;
+
   const onContext = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    onDelete();
+    onSelect();
+    setMenu({ x: e.clientX, y: e.clientY });
   };
 
   // Step preview — render the pattern as it ACTUALLY plays. Pattern
@@ -1666,7 +1690,7 @@ function DrumClipBlock({
           ? `0 0 0 2px hsl(${hue},90%,65%), 0 2px 8px rgba(0,0,0,0.45)`
           : 'inset 0 1px 0 rgba(255,255,255,0.18), 0 1px 4px rgba(0,0,0,0.4)',
       }}
-      title={`Drum clip — drag to move, right edge to resize, right-click to delete`}
+      title={`Drum clip — drag to move, right edge to resize, right-click for options`}
     >
       {/* Step pattern preview overlaid as cells, repeated across the
           clip's full length to match what the scheduler actually plays. */}
@@ -1710,6 +1734,44 @@ function DrumClipBlock({
       </span>
       {/* satisfy unused-binding lint */}
       <span className="hidden">{clipId}</span>
+      {menu && (
+        <div
+          onMouseDown={(e) => e.stopPropagation()}
+          className="fixed z-[60] min-w-[180px] rounded-md py-1 shadow-[0_8px_24px_rgba(0,0,0,0.5)] backdrop-blur-md"
+          style={{
+            left: menu.x, top: menu.y,
+            background: 'rgba(20, 12, 30, 0.96)',
+            border: '1px solid rgba(255,255,255,0.08)',
+          }}
+        >
+          <button
+            onClick={() => {
+              setMenu(null);
+              if (isLoopedSection) setLoopRegion(null);
+              else setLoopRegion({ start: startSec, end: startSec + lengthSec });
+            }}
+            className="w-full px-3 py-1.5 text-[13px] text-left text-white/80 hover:bg-white/[0.06] hover:text-white transition-colors flex items-center gap-2"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="17 1 21 5 17 9" />
+              <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+              <polyline points="7 23 3 19 7 15" />
+              <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+            </svg>
+            {isLoopedSection ? 'Stop looping' : 'Loop this section'}
+          </button>
+          <button
+            onClick={() => { setMenu(null); onDelete(); }}
+            className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-error-red hover:bg-ghost-error-red/10 transition-colors flex items-center gap-2"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+            Delete
+          </button>
+        </div>
+      )}
     </div>
   );
 }

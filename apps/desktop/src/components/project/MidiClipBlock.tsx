@@ -30,7 +30,9 @@ interface Props {
   onDelete: () => void;
   onDuplicate: () => void;
   onToggleGhost: () => void;
+  onToggleLoopSection: () => void;
   isGhost: boolean;
+  isLoopedSection: boolean;
   // Convert a clientX (page coords) → project-time on this lane. The
   // parent owns the lane geometry so this gets passed in.
   xToTime: (clientX: number) => number;
@@ -39,8 +41,7 @@ interface Props {
 const PREVIEW_LOW_PITCH = 36;   // C2
 const PREVIEW_HIGH_PITCH = 96;  // C7
 
-function MidiClipBlockInner({ clip, arrangementDur, selected, laneHeight, onSelect, onMove, onResize, onDelete, onDuplicate, onToggleGhost, isGhost, xToTime }: Props) {
-  void onDelete; // Delete now lives on the keyboard (Delete / Backspace)
+function MidiClipBlockInner({ clip, arrangementDur, selected, laneHeight, onSelect, onMove, onResize, onDelete, onDuplicate, onToggleGhost, onToggleLoopSection, isGhost, isLoopedSection, xToTime }: Props) {
   const leftPct = (clip.startSec / arrangementDur) * 100;
   const widthPct = (clip.lengthSec / arrangementDur) * 100;
 
@@ -253,6 +254,18 @@ function MidiClipBlockInner({ clip, arrangementDur, selected, laneHeight, onSele
             Duplicate
           </button>
           <button
+            onClick={() => { setMenu(null); onToggleLoopSection(); }}
+            className="w-full px-3 py-1.5 text-[13px] text-left text-white/80 hover:bg-white/[0.06] hover:text-white transition-colors flex items-center gap-2"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="17 1 21 5 17 9" />
+              <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+              <polyline points="7 23 3 19 7 15" />
+              <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+            </svg>
+            {isLoopedSection ? 'Stop looping' : 'Loop this section'}
+          </button>
+          <button
             onClick={() => { setMenu(null); onToggleGhost(); }}
             className="w-full px-3 py-1.5 text-[13px] text-left text-white/80 hover:bg-white/[0.06] hover:text-white transition-colors flex items-center gap-2"
             title="Show this clip's notes as a faded overlay in the piano roll while editing another clip"
@@ -273,6 +286,16 @@ function MidiClipBlockInner({ clip, arrangementDur, selected, laneHeight, onSele
               )}
             </svg>
             {isGhost ? 'Hide ghost layer' : 'Show as ghost layer'}
+          </button>
+          <button
+            onClick={() => { setMenu(null); onDelete(); }}
+            className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-error-red hover:bg-ghost-error-red/10 transition-colors flex items-center gap-2"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+            Delete
           </button>
         </div>
       )}
