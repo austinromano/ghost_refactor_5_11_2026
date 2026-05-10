@@ -71,6 +71,16 @@ export default function ReverbPanel({
 
   const { size, decay, mix, time, damping, width } = params;
   const dimmed = effect.bypassed ? 0.5 : 1;
+  // Preset name + navigator lives in the header now (next to the
+  // REVERB wordmark). Local UI state — not persisted yet since the
+  // ReverbParams model doesn't carry a preset id.
+  const presetList = ['Small Room', 'Medium Room', 'Hall', 'Large Hall', 'Cathedral', 'Plate', 'Spring'];
+  const [preset, setPreset] = useState('Large Hall');
+  const cyclePreset = (dir: 1 | -1) => {
+    const i = presetList.indexOf(preset);
+    const next = (i + dir + presetList.length) % presetList.length;
+    setPreset(presetList[next]);
+  };
 
   // Audio-reactive energy (0..1). Read RMS of the lane's pre-reverb
   // signal off the shared analyser, smooth it lightly, and pass it
@@ -155,6 +165,22 @@ export default function ReverbPanel({
           </svg>
         </button>
         <span className="text-[11px] font-bold tracking-[0.16em] ml-1" style={{ color: ACCENT }}>REVERB</span>
+        <span className="ml-3 text-[8.5px] font-bold tracking-[0.16em] uppercase text-white/45">Presets</span>
+        <span className="flex items-center gap-1 text-white/45">
+          <button
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); cyclePreset(-1); }}
+            className="px-1 hover:text-white transition-colors leading-none"
+            title="Previous preset"
+          >‹</button>
+          <span className="text-[10.5px] font-semibold tracking-wide min-w-[78px] text-center" style={{ color: ACCENT }}>{preset}</span>
+          <button
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); cyclePreset(1); }}
+            className="px-1 hover:text-white transition-colors leading-none"
+            title="Next preset"
+          >›</button>
+        </span>
         <span className="ml-auto" />
         {onClose && (
           <button
@@ -202,13 +228,6 @@ function ReverbBody({ laneKey, effect, params, energy, setReverbParam, toggleByp
   // have it yet. Held locally so the knob still drags and animates
   // like a real param.
   const [preDelay, setPreDelay] = useState(0.02); // 0..0.5 s
-  const [preset, setPreset] = useState('Large Hall');
-  const presetList = ['Small Room', 'Medium Room', 'Hall', 'Large Hall', 'Cathedral', 'Plate', 'Spring'];
-  const cyclePreset = (dir: 1 | -1) => {
-    const i = presetList.indexOf(preset);
-    const next = (i + dir + presetList.length) % presetList.length;
-    setPreset(presetList[next]);
-  };
   return (
     <div className="flex flex-col" style={{ height: PANEL_H - 28 - 28 }}>
       <div className="flex flex-1 min-h-0">
@@ -248,22 +267,6 @@ function ReverbBody({ laneKey, effect, params, energy, setReverbParam, toggleByp
         className="flex items-center gap-3 px-3 border-t"
         style={{ height: 28, borderColor: 'rgba(255,255,255,0.06)' }}
       >
-        <span className="text-[8.5px] font-bold tracking-[0.16em] uppercase text-white/45">Presets</span>
-        <span className="ml-auto flex items-center gap-2 text-white/45">
-          <button
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); cyclePreset(-1); }}
-            className="px-1 hover:text-white transition-colors"
-            title="Previous preset"
-          >‹</button>
-          <span className="text-[10.5px] font-semibold tracking-wide" style={{ color: ACCENT }}>{preset}</span>
-          <button
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); cyclePreset(1); }}
-            className="px-1 hover:text-white transition-colors"
-            title="Next preset"
-          >›</button>
-        </span>
         <span className="ml-auto" />
         <button
           onPointerDown={(e) => e.stopPropagation()}
