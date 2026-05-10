@@ -13,7 +13,7 @@ import ReverbPanel from './ReverbPanel';
 // follow-up; the chain shape is what matters here so the visual flow
 // (drop → reorder → bypass → delete) works end-to-end now.
 
-export default function EffectChainEditor({ laneKey, embedded = false, emptyMessage }: { laneKey: string; embedded?: boolean; emptyMessage?: string }) {
+export default function EffectChainEditor({ laneKey, embedded = false, emptyMessage, leading }: { laneKey: string; embedded?: boolean; emptyMessage?: string; leading?: React.ReactNode }) {
   // Subscribe to byProject so we re-render when other components mutate
   // the chain (drop on the lane, etc.). getChain reads off currentProjectId.
   const byProject = useEffectsStore((s) => s.byProject);
@@ -73,6 +73,22 @@ export default function EffectChainEditor({ laneKey, embedded = false, emptyMess
     // can land. Skip when embedded — the parent owns the layout in
     // that mode and renders its own empty state if it wants one.
     if (embedded) return null;
+    // When a `leading` device is provided (e.g. the Sampler card on
+    // a MIDI track), render it next to the empty drop hint so the
+    // user reads the chain left-to-right: device → empty insert slot.
+    if (leading) {
+      return (
+        <div className="shrink-0 mt-2 rounded-2xl glass overflow-hidden">
+          <div className="flex items-stretch gap-2 px-3 py-3 overflow-x-auto">
+            {leading}
+            <EmptyChainDropzoneInline
+              laneKey={laneKey}
+              message={emptyMessage ?? 'Drag EQ or Comp from the sidebar to add effects to this track.'}
+            />
+          </div>
+        </div>
+      );
+    }
     return (
       <EmptyChainDropzone
         laneKey={laneKey}
@@ -162,6 +178,9 @@ export default function EffectChainEditor({ laneKey, embedded = false, emptyMess
     >
       {/* Chain rail spans the whole panel — no separate identity column. */}
       <div className="flex-1 min-w-0 px-3 py-3 overflow-x-auto flex items-stretch gap-2">
+        {/* Leading device (e.g. MIDI track Sampler) — sits before the
+            reorderable effects so the chain reads instrument → FX. */}
+        {leading}
         <Reorder.Group
           axis="x"
           values={chain.map((e) => e.id)}
@@ -339,6 +358,55 @@ function ReverbChainItem({ fx, laneKey, isLast, onClose }: {
 // Empty-state drop target. Shown when the selected track / drum rack
 // has no effect chain yet — accepts EQ + Comp drags from the sidebar
 // the same way the arrangement lanes do.
+// Inline empty-state hint sized to sit next to a leading device card
+// (the Sampler on MIDI tracks). Same drop behavior as
+// EmptyChainDropzone, but without its own outer card / margins so the
+// parent's flex rail owns the layout. Matches the trailing drop slot
+// height (252) so the rail reads as a single row.
+function EmptyChainDropzoneInline({ laneKey, message }: { laneKey: string; message: string }) {
+  const [dragOver, setDragOver] = useState(false);
+  const isEffectDrag = (dt: DataTransfer): boolean => {
+    for (const t of Array.from(dt.types)) if (t === EFFECT_DRAG_MIME) return true;
+    return false;
+  };
+  const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!isEffectDrag(e.dataTransfer)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    if (!dragOver) setDragOver(true);
+  };
+  const onDragLeave = () => setDragOver(false);
+  const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!isEffectDrag(e.dataTransfer)) return;
+    e.preventDefault();
+    setDragOver(false);
+    try {
+      const raw = e.dataTransfer.getData(EFFECT_DRAG_MIME);
+      const payload = JSON.parse(raw) as { kind: EffectKind };
+      if (!payload?.kind) return;
+      useEffectsStore.getState().add(laneKey, payload.kind);
+    } catch { /* malformed payload — ignore */ }
+  };
+  return (
+    <div
+      onDragOver={onDragOver}
+      onDragEnter={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      className="flex-1 min-w-[260px] rounded-xl flex items-center justify-center px-4 text-center transition-colors"
+      style={{
+        height: 252,
+        border: dragOver ? '2px dashed rgba(168, 85, 247, 0.85)' : '1.5px dashed rgba(255,255,255,0.10)',
+        background: dragOver ? 'rgba(168, 85, 247, 0.12)' : 'rgba(255,255,255,0.02)',
+      }}
+    >
+      <span className={`text-[12px] ${dragOver ? 'text-white font-semibold not-italic tracking-wider uppercase' : 'text-white/35 italic'}`}>
+        {dragOver ? 'Drop to add effect' : message}
+      </span>
+    </div>
+  );
+}
+
 function EmptyChainDropzone({ laneKey, message }: { laneKey: string; message: string }) {
   const [dragOver, setDragOver] = useState(false);
   const isEffectDrag = (dt: DataTransfer): boolean => {

@@ -305,25 +305,26 @@ function MidiTrackFxView({ trackName, laneKey }: { trackName: string; laneKey: s
       <div className="px-3 py-1 text-[10.5px] font-bold tracking-[0.15em] uppercase text-purple-300/80">
         {trackName} FX
       </div>
-      <SamplerDeviceRow trackId={laneKey} />
       <EffectChainEditor
         laneKey={laneKey}
         emptyMessage="Drag EQ, Comp, or Reverb from the sidebar to add effects to this MIDI track."
+        leading={<SamplerChainCard trackId={laneKey} />}
       />
     </div>
   );
 }
 
-// Sampler device chip rendered as the first device in a MIDI track's
-// chain. Shows the instrument's loaded sample name (or an empty drop
-// hint), opens the floating Sampler editor on click, and accepts:
+// Sampler device card rendered as the first device in a MIDI track's
+// chain — Ableton-style. Sits inline with the EQ/Comp/Reverb cards so
+// the user reads the chain left-to-right: Sampler → effects. Drop
+// targets:
 //   - INSTRUMENT_DRAG_MIME (sampler tile from the sidebar) → seeds an
-//     empty instrument record + pops the sampler
+//     empty instrument record + pops the sampler editor
 //   - OS file / sample-library / project-file drops → loads the
 //     sample into the instrument directly
 // Same drop logic as the lane header so the user can drop in either
 // place; this one just lives inside the FX panel where the chain is.
-function SamplerDeviceRow({ trackId }: { trackId: string }) {
+function SamplerChainCard({ trackId }: { trackId: string }) {
   const projectId = useProjectStore((s) => s.currentProject?.id);
   const instrument = useMidiTrack((s) => s.instruments[trackId]);
   const ensureInstrument = useMidiTrack((s) => s.ensureInstrument);
@@ -413,31 +414,66 @@ function SamplerDeviceRow({ trackId }: { trackId: string }) {
       onDragLeave={onDragLeave}
       onDrop={onDrop}
       onClick={() => { ensureInstrument(trackId); openSampler(trackId); }}
-      className="mx-3 mb-2 rounded-md cursor-pointer transition-colors flex items-center gap-2 px-3 py-2"
+      className="shrink-0 cursor-pointer rounded-xl flex flex-col overflow-hidden transition-colors"
       style={{
-        background: dragOver ? 'rgba(168,85,247,0.18)' : 'rgba(124,58,237,0.10)',
-        border: dragOver ? '1px dashed rgba(168,85,247,0.7)' : '1px solid rgba(255,255,255,0.06)',
-        minHeight: 38,
+        // Match the EQ/Comp/Reverb chain cards' size so the device
+        // chain reads as one rail. 252 px tall matches the trailing
+        // drop slot height inside EffectChainEditor.
+        width: 220,
+        height: 252,
+        background: dragOver ? 'rgba(168,85,247,0.18)' : 'linear-gradient(180deg, rgba(124,58,237,0.18) 0%, rgba(124,58,237,0.08) 100%)',
+        border: dragOver ? '2px dashed rgba(168,85,247,0.85)' : '1px solid rgba(168,85,247,0.35)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)',
       }}
       title={hasSample
-        ? `Sampler · ${sampleName} — click to edit, drop a new sample to replace`
+        ? `Sampler · ${sampleName} — click to edit, drop a sample to replace`
         : 'Drag a Sampler from the Instruments sidebar, or drop a sample directly'}
     >
+      {/* Header strip — matches EQ/Comp panels' top bar style. */}
       <div
-        className="shrink-0 w-7 h-7 rounded flex items-center justify-center"
-        style={{ background: 'rgba(168,85,247,0.25)', border: '1px solid rgba(168,85,247,0.4)' }}
+        className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5"
+        style={{ background: 'rgba(168,85,247,0.25)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M3 12c1-3 2-3 3 0s2 3 3 0 2-3 3 0 2 3 3 0 2-3 3 0 2 3 3 0" />
         </svg>
+        <span className="text-[10.5px] font-bold tracking-[0.12em] uppercase text-white">Sampler</span>
+        <span className="ml-auto text-[8.5px] font-mono text-white/40 uppercase tracking-wider">Inst</span>
       </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-[11px] font-bold tracking-wide uppercase text-purple-300/90">Sampler</div>
-        <div className="text-[11.5px] text-white/80 truncate">
-          {hasSample ? sampleName : 'Drag a Sampler or sample here'}
-        </div>
+      {/* Body — sample slot. Big drop affordance when empty, name +
+          tiny waveform-ish glyph when loaded. */}
+      <div className="flex-1 flex flex-col items-center justify-center gap-2 px-3 text-center">
+        {hasSample ? (
+          <>
+            <div
+              className="w-12 h-12 rounded-full flex items-center justify-center"
+              style={{ background: 'rgba(168,85,247,0.3)', border: '1px solid rgba(168,85,247,0.55)' }}
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.92)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12h2l3-9 4 18 3-9h6" />
+              </svg>
+            </div>
+            <div className="text-[11.5px] font-medium text-white/90 truncate w-full">{sampleName}</div>
+            <div className="text-[9.5px] uppercase tracking-wider text-purple-300/70">Click to edit</div>
+          </>
+        ) : (
+          <>
+            <div
+              className="w-12 h-12 rounded-full flex items-center justify-center"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1.5px dashed rgba(168,85,247,0.4)' }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(168,134,255,0.85)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </div>
+            <div className="text-[11px] text-white/55 italic leading-snug">Drop a sample or<br/>drag the Sampler here</div>
+          </>
+        )}
       </div>
-      <span className="text-[9.5px] font-mono text-white/40 uppercase tracking-wider">Instrument</span>
+      {/* Footer arrow — points into the rest of the chain so the user
+          reads the signal flow left-to-right. */}
+      <div className="shrink-0 flex items-center justify-end px-2 py-1 text-[12px] text-white/30">→</div>
     </div>
   );
 }
