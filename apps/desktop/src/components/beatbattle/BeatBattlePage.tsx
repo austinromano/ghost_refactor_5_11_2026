@@ -209,43 +209,69 @@ function Hero({ secondsLeft, fmtTime, ready, onReady, readyCount }: {
 }) {
   return (
     <div className="grid grid-cols-[1fr_360px] gap-5">
-      <div className="flex flex-col justify-between p-5 rounded-2xl overflow-hidden relative"
+      <div
+        className="flex flex-col justify-between p-6 rounded-2xl overflow-hidden relative"
         style={{
-          background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.25) 0%, rgba(217, 70, 239, 0.12) 100%)',
+          // Cinematic hero. Background-image hook expects a file at
+          // `/beat-battle-hero.jpg` in the server's public folder —
+          // generate with ChatGPT (or any image source) and drop it
+          // there. While missing, the layered gradients still produce
+          // a moody concert-stage feel so the card never looks blank.
+          backgroundImage:
+            'linear-gradient(90deg, rgba(7,3,15,0.95) 0%, rgba(7,3,15,0.55) 45%, rgba(7,3,15,0.20) 70%, rgba(7,3,15,0) 100%), ' +
+            'radial-gradient(ellipse at top right, rgba(232,121,249,0.30), transparent 55%), ' +
+            'radial-gradient(ellipse at bottom right, rgba(168,85,247,0.25), transparent 60%), ' +
+            "url('/beat-battle-hero.jpg')",
+          backgroundSize: 'cover',
+          backgroundPosition: 'right center',
+          backgroundRepeat: 'no-repeat',
+          backgroundColor: '#10071F',
           border: '1px solid rgba(168, 85, 247, 0.30)',
+          minHeight: 200,
         }}
       >
         <div className="relative z-10">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="px-2 py-0.5 rounded-full text-[8.5px] font-bold tracking-[0.18em] uppercase"
-              style={{ background: 'rgba(232,121,249,0.20)', color: '#F0ABFC', border: '1px solid rgba(232,121,249,0.40)' }}
-            >
-              Live Lobby
-            </span>
-            <span className="text-[10px] font-mono text-white/45">#42 · 25 producers waiting</span>
-          </div>
-          <div className="text-[28px] font-bold text-white leading-tight">Beat Battle Royale</div>
-          <div className="text-[12px] text-white/55 mt-1">Make a beat. Win the vote. Prove you're the best.</div>
+          <div className="text-[30px] font-bold text-white leading-tight">Beat Battle Royale</div>
+          <div className="text-[12.5px] text-white/65 mt-1.5">Make a beat. Win the vote. Prove you're the best.</div>
         </div>
-        <div className="relative z-10 flex items-center gap-4 mt-5 text-[11px]">
-          <span className="flex items-center gap-1.5 text-white/70">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
-            </svg>
-            <span className="font-semibold text-white">20:00</span>
-          </span>
-          <span className="flex items-center gap-1.5 text-white/70">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
-            </svg>
-            <span className="font-semibold text-white">8/8</span>
-          </span>
+        {/* Stat-card row — TIME LIMIT / PLAYERS / PRIZE POOL */}
+        <div className="relative z-10 flex items-center gap-3 mt-5">
+          <HeroStat
+            label="Time Limit"
+            value="20:00"
+            icon={
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+              </svg>
+            }
+          />
+          <HeroStat
+            label="Players"
+            value="8 / 8"
+            icon={
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+            }
+          />
+          <HeroStat
+            label="Prize Pool"
+            value="500"
+            valueColor="#FBBF24"
+            icon={
+              <svg width="14" height="14" viewBox="0 0 24 24">
+                <defs>
+                  <linearGradient id="coinGrad" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#FBBF24" /><stop offset="100%" stopColor="#D97706" />
+                  </linearGradient>
+                </defs>
+                <circle cx="12" cy="12" r="9" fill="url(#coinGrad)" stroke="#FCD34D" strokeWidth="0.8" />
+                <text x="12" y="16" textAnchor="middle" fontSize="10.5" fontWeight="bold" fill="#7C2D12">G</text>
+              </svg>
+            }
+          />
         </div>
-        {/* Decorative gradient blob */}
-        <div className="absolute -right-12 -bottom-12 w-48 h-48 rounded-full opacity-30 pointer-events-none"
-          style={{ background: 'radial-gradient(circle, rgba(232,121,249,0.6), transparent 70%)' }}
-        />
       </div>
 
       <div className="flex flex-col p-4 rounded-2xl"
@@ -517,6 +543,30 @@ function MiniBars() {
           style={{ height: `${b * 100}%`, background: 'rgba(168,85,247,0.50)' }}
         />
       ))}
+    </div>
+  );
+}
+
+function HeroStat({ label, value, icon, valueColor }: {
+  label: string;
+  value: string;
+  icon: React.ReactNode;
+  valueColor?: string;
+}) {
+  return (
+    <div
+      className="flex flex-col gap-1 px-3 py-2 rounded-lg backdrop-blur-sm"
+      style={{
+        background: 'rgba(0, 0, 0, 0.55)',
+        border: '1px solid rgba(168, 134, 255, 0.18)',
+        minWidth: 110,
+      }}
+    >
+      <span className="text-[8.5px] font-bold tracking-[0.18em] uppercase text-white/55">{label}</span>
+      <span className="flex items-center gap-1.5 text-[14px] font-bold tabular-nums" style={{ color: valueColor ?? '#ffffff' }}>
+        <span style={{ color: valueColor ?? '#a855f7' }}>{icon}</span>
+        {value}
+      </span>
     </div>
   );
 }
