@@ -105,6 +105,26 @@ export function registerBeatBattleHandlers(io: IO, socket: SK) {
     broadcast(io, battle);
   });
 
+  socket.on('battle:chat', ({ battleId, text }) => {
+    const battle = BATTLES.get(battleId);
+    if (!battle) return;
+    // Lobby chat is open to anyone in the room (even spectators when
+    // we add that), so we don't gate on `participants.has` here.
+    // Anti-abuse: clamp text length + drop empties. Server stamps the
+    // message id + timestamp so all clients see identical ordering.
+    const trimmed = (text || '').trim().slice(0, 500);
+    if (!trimmed) return;
+    io.to(`battle:${battle.id}`).emit('battle:message', {
+      id: crypto.randomUUID(),
+      battleId: battle.id,
+      userId: socket.data.userId,
+      displayName: socket.data.displayName,
+      avatarUrl: socket.data.avatarUrl ?? null,
+      text: trimmed,
+      createdAt: new Date().toISOString(),
+    });
+  });
+
   socket.on('disconnect', () => {
     for (const battleId of joined) {
       const battle = BATTLES.get(battleId);

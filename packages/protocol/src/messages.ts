@@ -79,6 +79,10 @@ export interface ClientToServerEvents {
   'battle:join': (data: { battleId: string }) => void;
   'battle:leave': (data: { battleId: string }) => void;
   'battle:ready': (data: { battleId: string; ready: boolean }) => void;
+  // Lobby chat — text-only for v1. Server validates length, stamps
+  // the message with a UUID + createdAt, and rebroadcasts to the
+  // battle room.
+  'battle:chat': (data: { battleId: string; text: string }) => void;
   // Live per-user transport tick — client emits at ~10 Hz while playing so
   // collaborators see a ghost playhead following them.
   'transport:tick': (data: { projectId: string; currentTime: number; isPlaying: boolean }) => void;
@@ -191,6 +195,15 @@ export interface ServerToClientEvents {
       ready: boolean;
       joinedAt: string;
     }>;
+  }) => void;
+  'battle:message': (data: {
+    id: string;
+    battleId: string;
+    userId: string;
+    displayName: string;
+    avatarUrl: string | null;
+    text: string;
+    createdAt: string;
   }) => void;
   // Lightweight arrangement broadcast — carries just the new JSON blob so
   // clients can patch their local state without refetching the entire

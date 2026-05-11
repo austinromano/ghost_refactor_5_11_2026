@@ -58,12 +58,25 @@ export default function BeatBattlePage() {
   const [tab, setTab] = useState<LobbyTab>('lobby');
   const [secondsLeft, setSecondsLeft] = useState(165);
   const [chatInput, setChatInput] = useState('');
-  const [chat, setChat] = useState<ChatMessage[]>(MOCK_CHAT);
 
   // Live lobby state via socket. battle.participants is the real list
   // of producers in the room; me.ready is what the Ready Up button
-  // toggles.
-  const { state: battle, setReady: emitReady } = useBeatBattle(ARENA_ID);
+  // toggles; chat is the live message thread.
+  const { state: battle, chat: liveChat, setReady: emitReady, sendChat: emitChat } = useBeatBattle(ARENA_ID);
+
+  // Adapt the server's chat message shape into the local ChatMessage
+  // type the panel renders. Coloured avatars are deterministic via
+  // hashHue(userId), and timestamps render as "Hh / Mm / Ns ago".
+  const chat: ChatMessage[] = useMemo(
+    () => liveChat.map((m) => ({
+      id: m.id,
+      author: m.displayName,
+      text: m.text,
+      avatarHue: hashHue(m.userId),
+      timestamp: formatRelTime(m.createdAt),
+    })),
+    [liveChat],
+  );
 
   // Reflect remote ready toggles too — find the current user by
   // matching the auth context's userId. The socket auth middleware
@@ -94,10 +107,7 @@ export default function BeatBattlePage() {
   const sendChat = () => {
     const trimmed = chatInput.trim();
     if (!trimmed) return;
-    setChat((c) => [
-      ...c,
-      { id: crypto.randomUUID(), author: 'you', text: trimmed, avatarHue: 270, timestamp: 'now' },
-    ]);
+    emitChat(trimmed);
     setChatInput('');
   };
 
@@ -619,6 +629,22 @@ function hashHue(id: string): number {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = ((h << 5) - h + id.charCodeAt(i)) | 0;
   return Math.abs(h) % 360;
+}
+
+// Short relative-time formatter for chat timestamps. Returns "now"
+// for anything < 5 s, then Ns / Mm / Hh / Dd. Avoids dragging in a
+// full date lib for what's a single use case.
+function formatRelTime(iso: string): string {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return '';
+  const diffSec = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  if (diffSec < 5) return 'now';
+  if (diffSec < 60) return `${diffSec}s`;
+  const m = Math.floor(diffSec / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
 }
 
 function HeroStat({ label, value, icon, valueColor }: {
