@@ -804,7 +804,7 @@ export default function PluginLayout() {
                 />
                 <div className="flex-1 min-h-0 flex flex-col">
                   <ProjectListSidebar
-                    projects={projects.filter((p: any) => p.projectType !== 'beat')}
+                    projects={projects.filter((p: any) => p.projectType !== 'beat' && p.projectType !== 'beat-battle')}
                     allProjects={projects}
                     selectedId={selectedProjectId}
                     onSelect={selectProject}
@@ -985,6 +985,7 @@ export default function PluginLayout() {
                             onlineUsers={onlineUsers}
                             onInvite={() => setShowInvite(!showInvite)}
                             onRecord={() => setShowRecord(true)}
+                            hideSocial={(currentProject as any)?.projectType === 'beat-battle'}
                           />
 
                           <ArrangementDropZone projectId={selectedProjectId!} onFilesAdded={() => fetchProject(selectedProjectId!)}>
@@ -993,7 +994,7 @@ export default function PluginLayout() {
                               onFilesAdded={() => fetchProject(selectedProjectId!)}
                               isBeat={isBeatView}
                               compact={trackZoom === 'half'}
-                              rightSlot={(
+                              rightSlot={(currentProject as any)?.projectType === 'beat-battle' ? null : (
                                 <motion.button
                                   onClick={handleDownloadStems}
                                   className="w-[120px] h-11 rounded-full text-white text-[14px] font-semibold flex items-center justify-center gap-2 transition-all shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(124,58,237,0.4),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] shrink-0"

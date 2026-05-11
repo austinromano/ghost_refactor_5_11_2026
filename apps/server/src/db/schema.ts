@@ -37,6 +37,13 @@ export const projects = sqliteTable('projects', {
   genre: text('genre').default(''),
   projectType: text('project_type').default('project'),
   timeSignature: text('time_signature').default(''),
+  // Beat Battle linkage. When projectType === 'beat-battle', battleId
+  // is the lobby id (e.g. 'the-arena') and battleEndsAt is the original
+  // production-phase deadline. The client uses battleId to resubscribe
+  // to live battle:state events on refresh so the header countdown
+  // stays accurate even if the user reloads mid-session.
+  battleId: text('battle_id'),
+  battleEndsAt: text('battle_ends_at'),
   // Full arrangement state as JSON: clip offsets, trims, volumes, solo/mute,
   // pitch, and parent ids for local-only split/dup clips. Lets the server
   // persist the arrangement across sessions and sync it in real time between

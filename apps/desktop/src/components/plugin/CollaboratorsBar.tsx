@@ -8,9 +8,14 @@ interface Props {
   onlineUsers: PresenceInfo[];
   onInvite: () => void;
   onRecord: () => void;
+  // Hides the record + invite CTAs when set. Beat Battle projects don't
+  // get social affordances during the session — collaborators are
+  // determined by the lobby, and the project is a single-author sprint
+  // until production wraps.
+  hideSocial?: boolean;
 }
 
-export default function CollaboratorsBar({ members, onlineUsers, onInvite, onRecord }: Props) {
+export default function CollaboratorsBar({ members, onlineUsers, onInvite, onRecord, hideSocial }: Props) {
   // Host goes LAST in the cluster so the host avatar sits immediately next
   // to the host name/HOST badge to its right.
   const sorted = [...members].sort((a, b) => (a.role === 'owner' ? 1 : b.role === 'owner' ? -1 : 0));
@@ -77,36 +82,40 @@ export default function CollaboratorsBar({ members, onlineUsers, onInvite, onRec
             </span>
           </div>
         </div>
-        {/* Vertical-cam record button — opens the 9:16 capture overlay
-            so the host can film a face cam over the playing project
-            for TikTok / Reels / Shorts. The icon pairs a phone-frame
-            with a record dot so the affordance is obvious next to
-            the Invite CTA. */}
-        <motion.button
-          onClick={onRecord}
-          className="w-11 h-11 rounded-full text-white flex items-center justify-center transition-all shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(244,63,94,0.4),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] shrink-0"
-          style={{ background: 'linear-gradient(180deg, #ef4444 0%, #991b1b 100%)' }}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          title="Record vertical video"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="6" y="2" width="12" height="20" rx="2" />
-            <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
-          </svg>
-        </motion.button>
-        <motion.button
-          onClick={onInvite}
-          className="w-[120px] h-11 rounded-full text-white text-[14px] font-semibold flex items-center justify-center gap-2 transition-all shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(124,58,237,0.4),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] shrink-0"
-          style={{ background: 'linear-gradient(180deg, #7C3AED 0%, #581C87 100%)' }}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" />
-          </svg>
-          Invite
-        </motion.button>
+        {!hideSocial && (
+          <>
+            {/* Vertical-cam record button — opens the 9:16 capture overlay
+                so the host can film a face cam over the playing project
+                for TikTok / Reels / Shorts. The icon pairs a phone-frame
+                with a record dot so the affordance is obvious next to
+                the Invite CTA. */}
+            <motion.button
+              onClick={onRecord}
+              className="w-11 h-11 rounded-full text-white flex items-center justify-center transition-all shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(244,63,94,0.4),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] shrink-0"
+              style={{ background: 'linear-gradient(180deg, #ef4444 0%, #991b1b 100%)' }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              title="Record vertical video"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="6" y="2" width="12" height="20" rx="2" />
+                <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
+              </svg>
+            </motion.button>
+            <motion.button
+              onClick={onInvite}
+              className="w-[120px] h-11 rounded-full text-white text-[14px] font-semibold flex items-center justify-center gap-2 transition-all shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(124,58,237,0.4),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] shrink-0"
+              style={{ background: 'linear-gradient(180deg, #7C3AED 0%, #581C87 100%)' }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" />
+              </svg>
+              Invite
+            </motion.button>
+          </>
+        )}
       </div>
     </div>
   );

@@ -30,6 +30,9 @@ export interface CreateProjectRequest {
   key?: string;
   genre?: string;
   timeSignature?: string;
+  projectType?: string;
+  battleId?: string | null;
+  battleEndsAt?: string | null;
 }
 
 export interface AddTrackRequest {

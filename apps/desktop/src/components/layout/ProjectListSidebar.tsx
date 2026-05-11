@@ -224,7 +224,7 @@ function ProjectListSidebar({
   const beatsOpen = true;
   const [communitiesOpen, setCommunitiesOpen] = useState(true);
   const [sectionOrder, setSectionOrder] = useState<string[]>(() => {
-    const defaults = ['collabs', 'projects', 'favorites', 'communities', 'samples'];
+    const defaults = ['collabs', 'projects', 'battles', 'favorites', 'communities', 'samples'];
     try {
       const saved = localStorage.getItem('ghost_sidebar_order');
       if (saved) {
@@ -346,6 +346,59 @@ function ProjectListSidebar({
               )}
             </div>
           )}
+        </div>
+        </Reorder.Item>
+          );
+          if (sectionKey === 'battles') return (
+        <Reorder.Item key="battles" value="battles" style={{ listStyle: 'none' }} className="cursor-grab active:cursor-grabbing" whileDrag={{ scale: 1.02, zIndex: 50, boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
+        {/* Beat Battles — projects auto-created by the Beat Battle lobby
+            live here instead of the main Projects list so the competition
+            scratch projects don't pollute the user's regular library. */}
+        <div>
+          <div className="group flex items-center gap-2 px-3 pt-4 pb-2 cursor-grab active:cursor-grabbing select-none">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400 shrink-0">
+              <path d="M6 10h2M7 9v2M16 10h.01M18 12h.01" />
+              <path d="M21.4 16.4a3 3 0 0 1-2.92 2.34h-.04a2 2 0 0 1-1.74-1.04l-1.3-2.31a2 2 0 0 0-1.74-1.04h-3.32a2 2 0 0 0-1.74 1.04l-1.3 2.31a2 2 0 0 1-1.74 1.04h-.04A3 3 0 0 1 2.6 16.4l1.74-7.9A4 4 0 0 1 8.26 5.4h7.48a4 4 0 0 1 3.92 3.1z" />
+            </svg>
+            <span className="text-[14px] font-bold text-white tracking-tight">Beat Battles</span>
+            {(() => {
+              const n = allProjects.filter((p: any) => p.projectType === 'beat-battle').length;
+              return n > 0 ? <span className="ml-auto text-[11px] font-semibold text-white/30 tabular-nums">{n}</span> : null;
+            })()}
+          </div>
+          <div className="px-2 pb-1.5 space-y-0.5">
+            {(() => {
+              const battles = allProjects
+                .filter((p: any) => p.projectType === 'beat-battle')
+                .sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+              if (battles.length === 0) {
+                return (
+                  <p className="px-2 py-1.5 text-[12px] text-ghost-text-muted italic">
+                    Join a Beat Battle to start one
+                  </p>
+                );
+              }
+              return battles.map((p: any) => (
+                <button
+                  key={p.id}
+                  onClick={() => onSelect(p.id)}
+                  className={`w-full flex items-center px-2 py-1.5 text-[13px] rounded-md transition-colors ${
+                    selectedId === p.id && !selectedPackId
+                      ? 'bg-white/[0.08] text-white font-medium'
+                      : 'text-ghost-text-muted font-normal hover:bg-white/[0.04] hover:text-ghost-text-secondary'
+                  }`}
+                >
+                  <span className="flex items-center gap-2 flex-1 min-w-0">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400 shrink-0">
+                      <path d="M21.4 16.4a3 3 0 0 1-2.92 2.34h-.04a2 2 0 0 1-1.74-1.04l-1.3-2.31a2 2 0 0 0-1.74-1.04h-3.32a2 2 0 0 0-1.74 1.04l-1.3 2.31a2 2 0 0 1-1.74 1.04h-.04A3 3 0 0 1 2.6 16.4l1.74-7.9A4 4 0 0 1 8.26 5.4h7.48a4 4 0 0 1 3.92 3.1z" />
+                    </svg>
+                    <span className="truncate">{p.name}</span>
+                  </span>
+                  <ProjectPresenceCluster users={usersByProject.get(p.id) || []} />
+                </button>
+              ));
+            })()}
+          </div>
         </div>
         </Reorder.Item>
           );

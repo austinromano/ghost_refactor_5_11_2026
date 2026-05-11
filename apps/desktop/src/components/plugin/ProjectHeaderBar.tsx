@@ -18,6 +18,43 @@ interface Props {
   onLeave: () => void;
 }
 
+// Live MM:SS countdown to a fixed deadline. Used for the Beat Battle
+// production-phase timer rendered next to the key. Re-renders once a
+// second; freezes at 00:00 when the deadline passes so the user still
+// sees the placeholder instead of negative numbers.
+function BattleCountdown({ endsAt }: { endsAt: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const target = Date.parse(endsAt);
+  const secondsLeft = Number.isFinite(target)
+    ? Math.max(0, Math.ceil((target - now) / 1000))
+    : 0;
+  const mm = String(Math.floor(secondsLeft / 60)).padStart(2, '0');
+  const ss = String(secondsLeft % 60).padStart(2, '0');
+  const danger = secondsLeft <= 30 && secondsLeft > 0;
+  return (
+    <>
+      <span className="text-[13px] text-white/50 font-semibold px-1.5">TIMER</span>
+      <span
+        className="text-[15px] font-bold tabular-nums px-2 py-0.5 rounded"
+        style={{
+          fontFamily: "'Consolas', monospace",
+          color: secondsLeft === 0 ? '#F472B6' : danger ? '#FBBF24' : '#F0ABFC',
+          background: 'rgba(20,10,40,0.4)',
+          border: `1px solid ${danger ? 'rgba(251,191,36,0.45)' : 'rgba(232,121,249,0.30)'}`,
+          textShadow: danger ? '0 0 6px rgba(251,191,36,0.45)' : '0 0 6px rgba(232,121,249,0.30)',
+        }}
+        title={`Battle ends at ${new Date(endsAt).toLocaleTimeString()}`}
+      >
+        {mm}:{ss}
+      </span>
+    </>
+  );
+}
+
 const TIME_SIGNATURES = ['2/4', '3/4', '4/4', '5/4', '6/4', '7/4', '6/8', '7/8', '9/8', '12/8'];
 
 export default function ProjectHeaderBar({
@@ -130,6 +167,9 @@ export default function ProjectHeaderBar({
           onChange={(e) => debouncedKey(e.target.value.slice(0, 3))}
           onBlur={() => { if (keyTimer.current) clearTimeout(keyTimer.current); if (key) onKeyChange(key); }}
         />
+        {project.projectType === 'beat-battle' && project.battleEndsAt && (
+          <BattleCountdown endsAt={project.battleEndsAt} />
+        )}
       </div>
       <div className="relative z-20" ref={menuRef}>
         <button
@@ -156,25 +196,29 @@ export default function ProjectHeaderBar({
               </svg>
               History
             </button>
-            <button onClick={() => { setShowMenu(false); onShareToFeed(); }} className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-text-secondary hover:bg-white/[0.06] hover:text-white transition-colors flex items-center gap-2">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" />
-              </svg>
-              Share to Feed
-            </button>
-            <button onClick={() => { setShowMenu(false); onInvite(); }} className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-text-secondary hover:bg-white/[0.06] hover:text-white transition-colors flex items-center gap-2">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" />
-              </svg>
-              Invite Collaborator
-            </button>
-            <button onClick={() => { setShowMenu(false); onShareLink(); }} className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-text-secondary hover:bg-white/[0.06] hover:text-white transition-colors flex items-center gap-2">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-              </svg>
-              Share Link
-            </button>
-            <div className="h-px bg-white/5 mx-2 my-1" />
+            {project.projectType !== 'beat-battle' && (
+              <>
+                <button onClick={() => { setShowMenu(false); onShareToFeed(); }} className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-text-secondary hover:bg-white/[0.06] hover:text-white transition-colors flex items-center gap-2">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" />
+                  </svg>
+                  Share to Feed
+                </button>
+                <button onClick={() => { setShowMenu(false); onInvite(); }} className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-text-secondary hover:bg-white/[0.06] hover:text-white transition-colors flex items-center gap-2">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" />
+                  </svg>
+                  Invite Collaborator
+                </button>
+                <button onClick={() => { setShowMenu(false); onShareLink(); }} className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-text-secondary hover:bg-white/[0.06] hover:text-white transition-colors flex items-center gap-2">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                  </svg>
+                  Share Link
+                </button>
+                <div className="h-px bg-white/5 mx-2 my-1" />
+              </>
+            )}
             {canDelete ? (
               <button onClick={() => { setShowMenu(false); onDelete(); }} className="w-full px-3 py-1.5 text-[13px] text-left text-ghost-error-red hover:bg-ghost-error-red/10 transition-colors flex items-center gap-2">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

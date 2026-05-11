@@ -11,7 +11,7 @@ interface ProjectState {
 
   fetchProjects: () => Promise<void>;
   fetchProject: (id: string) => Promise<void>;
-  createProject: (data: { name: string; description?: string; tempo?: number; key?: string; timeSignature?: string }) => Promise<Project>;
+  createProject: (data: { name: string; description?: string; tempo?: number; key?: string; timeSignature?: string; projectType?: string; battleId?: string | null; battleEndsAt?: string | null }) => Promise<Project>;
 
   updateProject: (projectId: string, data: { name?: string; tempo?: number; key?: string; genre?: string }) => Promise<void>;
   addTrack: (projectId: string, data: { name: string; type: string }) => Promise<void>;

@@ -143,14 +143,19 @@ export default function BeatBattlePage() {
     (async () => {
       try {
         const name = `Beat Battle — ${battle.kit ?? 'Royale'}`;
-        const p = await createProject({ name, projectType: 'beat' } as any);
+        const p = await createProject({
+          name,
+          projectType: 'beat-battle',
+          battleId: battle.battleId,
+          battleEndsAt: battle.endsAt,
+        });
         localStorage.setItem(persistedKey, sessionKey);
         window.dispatchEvent(new CustomEvent('ghost-open-project', { detail: { projectId: p.id } }));
       } catch {
         autoOpenedRef.current = null;
       }
     })();
-  }, [status, battle?.battleId, battle?.startsAt, battle?.kit, createProject]);
+  }, [status, battle?.battleId, battle?.startsAt, battle?.endsAt, battle?.kit, createProject]);
 
   const sendChat = () => {
     const trimmed = chatInput.trim();

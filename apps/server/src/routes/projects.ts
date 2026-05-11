@@ -21,6 +21,8 @@ const createProjectSchema = z.object({
   genre: z.string().max(50).optional().default(''),
   projectType: z.string().optional().default('project'),
   timeSignature: z.string().max(10).optional().default('4/4'),
+  battleId: z.string().max(100).optional().nullable(),
+  battleEndsAt: z.string().max(40).optional().nullable(),
 });
 
 const updateProjectSchema = z.object({
