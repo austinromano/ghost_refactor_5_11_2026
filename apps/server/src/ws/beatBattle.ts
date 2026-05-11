@@ -163,9 +163,19 @@ function evaluateTransitions(io: IO, battle: Battle) {
 export function registerBeatBattleHandlers(io: IO, socket: SK) {
   const joined = new Set<string>();
 
-  socket.on('battle:join', ({ battleId }) => {
+  socket.on('battle:join', ({ battleId, spectator }: { battleId: string; spectator?: boolean }) => {
     const battle = BATTLES.get(battleId);
     if (!battle) return;
+    // Spectator joins subscribe to the socket room (so they receive
+    // state + chat broadcasts) without being added to the competing
+    // participant set. Used after a Quit so the user can keep
+    // watching the battle they bailed on.
+    if (spectator) {
+      socket.join(`battle:${battle.id}`);
+      joined.add(battle.id);
+      broadcast(io, battle);
+      return;
+    }
     if (battle.participants.size >= battle.maxPlayers && !battle.participants.has(socket.data.userId)) {
       // Lobby full — silently ignore. v2 will surface a "lobby full"
       // toast to the client and offer to spin up a sibling room.

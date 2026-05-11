@@ -36,7 +36,8 @@ export interface BattleChatMessage {
   createdAt: string;
 }
 
-export function useBeatBattle(battleId: string | null) {
+export function useBeatBattle(battleId: string | null, opts?: { spectator?: boolean }) {
+  const spectator = !!opts?.spectator;
   const [state, setState] = useState<BattleState | null>(null);
   // Capped rolling buffer of chat messages — keep the most recent
   // 100 so a long lobby doesn't blow up state. Server doesn't
@@ -63,14 +64,21 @@ export function useBeatBattle(battleId: string | null) {
 
     socket.on('battle:state', onState);
     socket.on('battle:message', onMessage);
-    socket.emit('battle:join', { battleId });
+    // Spectator joins subscribe to broadcasts without being added to
+    // the participants set on the server, so a user who quit the
+    // battle can keep watching the lobby without silently rejoining.
+    socket.emit('battle:join', { battleId, spectator });
 
     return () => {
       socket.off('battle:state', onState);
       socket.off('battle:message', onMessage);
+      // Spectators were never in the participants set, but the leave
+      // handler also removes us from the socket.io room which is
+      // exactly what we want either way — it's a no-op on the
+      // participant side when we're a spectator.
       try { socket.emit('battle:leave', { battleId }); } catch { /* socket closed */ }
     };
-  }, [battleId]);
+  }, [battleId, spectator]);
 
   const setReady = useCallback((ready: boolean) => {
     if (!battleId) return;

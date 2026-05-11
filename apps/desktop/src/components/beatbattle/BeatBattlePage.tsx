@@ -79,9 +79,11 @@ export default function BeatBattlePage() {
 
   // Live lobby state via socket. battle.participants is the real list
   // of producers in the room; me.ready is what the Ready Up button
-  // toggles; chat is the live message thread. Passing null while
-  // opted-out keeps the hook idle so we don't re-join the battle.
-  const { state: battle, chat: liveChat, setReady: emitReady, sendChat: emitChat } = useBeatBattle(optedOut ? null : ARENA_ID);
+  // toggles; chat is the live message thread. When opted-out we join
+  // as a spectator: socket subscribes for state + chat broadcasts,
+  // but the server doesn't add us to the participant set, so we can
+  // watch the others compete without silently rejoining.
+  const { state: battle, chat: liveChat, setReady: emitReady, sendChat: emitChat } = useBeatBattle(ARENA_ID, { spectator: optedOut });
 
   // Adapt the server's chat message shape into the local ChatMessage
   // type the panel renders. Coloured avatars are deterministic via
@@ -142,7 +144,10 @@ export default function BeatBattlePage() {
   const createProject = useProjectStore((s) => s.createProject);
   const autoOpenedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (status !== 'active' || !battle) return;
+    // Opted-out spectators must NEVER get auto-pulled into a project
+    // — that's the whole point of quitting. The lobby still renders
+    // live state for them, but production transitions are read-only.
+    if (status !== 'active' || !battle || optedOut) return;
     const sessionKey = `${battle.battleId}::${battle.startsAt ?? ''}`;
     if (autoOpenedRef.current === sessionKey) return;
     autoOpenedRef.current = sessionKey;
@@ -181,7 +186,7 @@ export default function BeatBattlePage() {
         if (import.meta.env.DEV) console.warn('[BeatBattle] auto-open failed:', err);
       }
     })();
-  }, [status, battle?.battleId, battle?.startsAt, battle?.endsAt, battle?.kit, createProject]);
+  }, [status, optedOut, battle?.battleId, battle?.startsAt, battle?.endsAt, battle?.kit, createProject]);
 
   const sendChat = () => {
     const trimmed = chatInput.trim();
@@ -226,7 +231,8 @@ export default function BeatBattlePage() {
     } catch { /* socket may be down — server cleanup will catch us */ }
     try { localStorage.removeItem('beat-battle-auto-opened'); } catch { /* quota */ }
     setBattleOptOut(true);
-    window.dispatchEvent(new CustomEvent('ghost-go-home'));
+    // We stay on the lobby — flipping opted-out re-renders the page
+    // in spectator mode so the user keeps seeing who's still playing.
   };
 
   // Reverse of quitBattle — wired to the "Rejoin Battle" CTA on the
@@ -275,12 +281,39 @@ export default function BeatBattlePage() {
             <svg width="13" height="13" viewBox="0 0 24 24" fill="#FBBF24"><circle cx="12" cy="12" r="9" /></svg>
             <span className="text-[12px] font-semibold tabular-nums text-white">1,250</span>
           </span>
-          {!optedOut && (
+          {optedOut ? (
+            <>
+              <span
+                className="flex items-center gap-1.5 px-3 py-1 rounded-full"
+                style={{ background: 'rgba(148,163,184,0.10)', border: '1px solid rgba(148,163,184,0.30)', color: '#94A3B8' }}
+                title="You've left the battle — watching as a spectator"
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                <span className="text-[10.5px] font-bold tracking-[0.14em] uppercase">Spectating</span>
+              </span>
+              <button
+                onClick={rejoinBattle}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-full transition-colors"
+                style={{ background: 'rgba(168,85,247,0.16)', border: '1px solid rgba(168,85,247,0.45)', color: '#E879F9' }}
+                title="Rejoin the battle as a participant"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+                  <polyline points="10 17 15 12 10 7" />
+                  <line x1="15" y1="12" x2="3" y2="12" />
+                </svg>
+                <span className="text-[11px] font-bold tracking-[0.12em] uppercase">Rejoin</span>
+              </button>
+            </>
+          ) : (
             <button
               onClick={quitBattle}
               className="flex items-center gap-1.5 px-3 py-1 rounded-full transition-colors"
               style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.35)', color: '#F87171' }}
-              title="Leave the battle and return home"
+              title="Leave the battle but keep watching as a spectator"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -293,38 +326,7 @@ export default function BeatBattlePage() {
         </span>
       </div>
 
-      {optedOut ? (
-        <div className="flex-1 flex items-center justify-center px-6">
-          <div className="text-center max-w-md">
-            <div
-              className="w-16 h-16 mx-auto mb-5 rounded-2xl flex items-center justify-center"
-              style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.30)' }}
-            >
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#F87171" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                <polyline points="16 17 21 12 16 7" />
-                <line x1="21" y1="12" x2="9" y2="12" />
-              </svg>
-            </div>
-            <div className="text-[22px] font-bold text-white mb-2">You've left the battle</div>
-            <div className="text-[13px] text-white/55 mb-6">
-              You won't be counted as a participant or pulled into production sessions until you rejoin.
-            </div>
-            <button
-              onClick={rejoinBattle}
-              className="px-6 py-2.5 rounded-lg text-[13px] font-bold tracking-[0.12em] uppercase transition-all"
-              style={{
-                background: 'linear-gradient(180deg, #a855f7 0%, #7c3aed 100%)',
-                color: '#ffffff',
-                border: '1px solid rgba(168, 85, 247, 0.55)',
-                boxShadow: '0 6px 16px rgba(124, 58, 237, 0.45)',
-              }}
-            >
-              Rejoin Battle
-            </button>
-          </div>
-        </div>
-      ) : tab !== 'lobby' ? (
+      {tab !== 'lobby' ? (
         <div className="flex-1 flex items-center justify-center text-center">
           <div>
             <div className="text-[14px] font-bold tracking-wider uppercase text-purple-300/70 mb-2">
@@ -349,14 +351,16 @@ export default function BeatBattlePage() {
                 fmtTime={fmtTime}
                 ready={ready}
                 onReady={() => {
+                  if (optedOut) { rejoinBattle(); return; }
                   const next = !ready;
                   setReady(next);
                   emitReady(next);
                 }}
-                readyCount={readyCount + (ready ? 1 : 0)}
+                readyCount={readyCount + (!optedOut && ready ? 1 : 0)}
                 joinedCount={joinedCount}
                 maxPlayers={maxPlayers}
                 prizePool={battle?.prizePool ?? 500}
+                spectator={optedOut}
               />
               <PlayersGrid players={players} youReady={ready} maxPlayers={maxPlayers} />
               <div className="grid grid-cols-3 gap-4">
@@ -420,7 +424,7 @@ export default function BeatBattlePage() {
 
 // ── Hero card with countdown + ready up ─────────────────────────────────
 
-function Hero({ status, kit, secondsLeft, fmtTime, ready, onReady, readyCount, joinedCount, maxPlayers, prizePool }: {
+function Hero({ status, kit, secondsLeft, fmtTime, ready, onReady, readyCount, joinedCount, maxPlayers, prizePool, spectator }: {
   status: 'waiting' | 'starting' | 'active' | 'voting' | 'complete';
   kit: string;
   secondsLeft: number;
@@ -431,6 +435,10 @@ function Hero({ status, kit, secondsLeft, fmtTime, ready, onReady, readyCount, j
   joinedCount: number;
   maxPlayers: number;
   prizePool: number;
+  // When true, the Ready Up button is replaced with a Rejoin CTA
+  // (handler still goes through onReady so the parent decides whether
+  // to set ready or call rejoinBattle).
+  spectator?: boolean;
 }) {
   const phaseLabel = status === 'starting' ? 'Starting in'
     : status === 'active' ? 'Production phase'
@@ -535,7 +543,20 @@ function Hero({ status, kit, secondsLeft, fmtTime, ready, onReady, readyCount, j
           {status === 'voting' && 'Vote for your favourite submissions'}
           {status === 'waiting' && 'Get ready to start producing'}
         </div>
-        {status === 'waiting' || status === 'starting' ? (
+        {spectator ? (
+          <button
+            onClick={onReady}
+            className="mt-3 px-4 py-2 rounded-lg text-[12px] font-bold tracking-[0.12em] uppercase transition-colors"
+            style={{
+              background: 'linear-gradient(180deg, #a855f7 0%, #7c3aed 100%)',
+              color: '#ffffff',
+              border: '1px solid rgba(168, 85, 247, 0.55)',
+              boxShadow: '0 6px 16px rgba(124, 58, 237, 0.45)',
+            }}
+          >
+            Rejoin to Play
+          </button>
+        ) : status === 'waiting' || status === 'starting' ? (
           <button
             onClick={onReady}
             disabled={status === 'starting' && ready}

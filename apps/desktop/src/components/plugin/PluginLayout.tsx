@@ -484,14 +484,19 @@ export default function PluginLayout() {
     return () => window.removeEventListener('ghost-open-settings', openSettings);
   }, []);
 
-  // 'ghost-go-home' is what the Beat Battle Quit buttons dispatch after
-  // they've already cleaned up their own socket state. We just need to
-  // route the user back to the home dock and tear down any open
-  // project so they don't end up on a half-loaded battle screen.
+  // Navigation events fired by Beat Battle Quit/Rejoin handlers after
+  // they've already cleaned up their own socket state. PluginLayout
+  // just flips the dock so we don't end up on a half-loaded battle
+  // screen with a stale project still open underneath.
   useEffect(() => {
     const goHome = () => { goTo('home'); };
+    const goBattle = () => { goTo('beat-battle'); };
     window.addEventListener('ghost-go-home', goHome);
-    return () => window.removeEventListener('ghost-go-home', goHome);
+    window.addEventListener('ghost-go-beat-battle', goBattle);
+    return () => {
+      window.removeEventListener('ghost-go-home', goHome);
+      window.removeEventListener('ghost-go-beat-battle', goBattle);
+    };
   }, []);
 
   // Always land on WelcomeHero when the plugin opens — user picks a project
@@ -1010,7 +1015,11 @@ export default function PluginLayout() {
                               // every subscriber when this flips).
                               try { localStorage.removeItem('beat-battle-auto-opened'); } catch { /* quota */ }
                               setBattleOptOut(true);
-                              window.dispatchEvent(new CustomEvent('ghost-go-home'));
+                              // Land on the Beat Battle lobby (in spectator
+                              // mode now that opt-out is set) instead of
+                              // home — the user said they want to keep
+                              // watching the battle they bailed on.
+                              window.dispatchEvent(new CustomEvent('ghost-go-beat-battle'));
                             } : undefined}
                           />
 

@@ -76,7 +76,10 @@ export interface ClientToServerEvents {
   // Beat Battle lobby — v1 has a single shared room "the-arena". The
   // client subscribes on lobby mount; server tracks participants
   // in-memory and broadcasts state on every change.
-  'battle:join': (data: { battleId: string }) => void;
+  // spectator:true subscribes to broadcasts only — server skips
+  // adding the user to the competing participant set, so a user who
+  // quit can keep watching the lobby without silently rejoining.
+  'battle:join': (data: { battleId: string; spectator?: boolean }) => void;
   'battle:leave': (data: { battleId: string }) => void;
   'battle:ready': (data: { battleId: string; ready: boolean }) => void;
   // Lobby chat — text-only for v1. Server validates length, stamps
