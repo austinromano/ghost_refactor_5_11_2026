@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import Avatar from '../common/Avatar';
 import type { PresenceInfo, ProjectMember } from '@ghost/types';
 import { useWebrtcStore } from '../../stores/webrtcStore';
+import { useBeatBattleOptOut } from '../../hooks/useBeatBattleOptOut';
 
 interface Props {
   members: ProjectMember[];
@@ -25,6 +26,10 @@ export default function CollaboratorsBar({ members, onlineUsers, onInvite, onRec
   const sorted = [...members].sort((a, b) => (a.role === 'owner' ? 1 : b.role === 'owner' ? -1 : 0));
   const owners = sorted.filter((m) => m.role === 'owner');
   const speakingUserIds = useWebrtcStore((s) => s.speakingUserIds);
+  // If the user already pressed Quit, hide the CTA — there's nothing
+  // left to quit from. They can come back via the controller dock's
+  // rejoin splash.
+  const optedOut = useBeatBattleOptOut();
 
   const renderAvatar = (m: ProjectMember) => {
     const isOnline = onlineUsers.some((u) => u.userId === m.userId);
@@ -86,7 +91,7 @@ export default function CollaboratorsBar({ members, onlineUsers, onInvite, onRec
             </span>
           </div>
         </div>
-        {hideSocial && onQuitBattle && (
+        {hideSocial && onQuitBattle && !optedOut && (
           <motion.button
             onClick={onQuitBattle}
             className="h-11 px-4 rounded-full text-white text-[13px] font-bold tracking-[0.06em] uppercase flex items-center justify-center gap-2 transition-all shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(239,68,68,0.4),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] shrink-0"

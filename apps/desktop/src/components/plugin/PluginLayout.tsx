@@ -4,6 +4,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { useProjectStore } from '../../stores/projectStore';
 import { api } from '../../lib/api';
 import { onGlobalOnlineUsers, getSocket, type OnlineUser } from '../../lib/socket';
+import { setBattleOptOut } from '../../hooks/useBeatBattleOptOut';
 import Avatar from '../common/Avatar';
 import ChatPanel from '../session/ChatPanel';
 import { useSessionStore } from '../../stores/sessionStore';
@@ -1003,10 +1004,12 @@ export default function PluginLayout() {
                               } catch { /* socket may be down */ }
                               // Persist the opt-out so re-opening Beat Battle
                               // from the dock does NOT silently rejoin the
-                              // user. The lobby page reads this on mount and
-                              // renders a "Rejoin" splash instead.
-                              try { localStorage.setItem('beat-battle-opted-out', '1'); } catch { /* quota */ }
+                              // user, AND so the project header, sidebar, and
+                              // collaborators bar all drop their battle chrome
+                              // in the same tick (the shared hook re-renders
+                              // every subscriber when this flips).
                               try { localStorage.removeItem('beat-battle-auto-opened'); } catch { /* quota */ }
+                              setBattleOptOut(true);
                               window.dispatchEvent(new CustomEvent('ghost-go-home'));
                             } : undefined}
                           />

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useBeatBattle, type BattleParticipant } from '../../hooks/useBeatBattle';
+import { useBeatBattleOptOut, setBattleOptOut } from '../../hooks/useBeatBattleOptOut';
 import { useProjectStore } from '../../stores/projectStore';
 import { getSocket } from '../../lib/socket';
 
@@ -56,12 +57,6 @@ const SESSION_RULES = [
   'Top 3 split the pot — anonymous tally',
 ];
 
-// Persistent flag set by the Quit Battle button. While truthy, the
-// page renders a "Rejoin" splash instead of auto-joining the lobby,
-// so visiting the controller dock after a quit does NOT silently
-// re-add the user as a battle participant.
-const OPT_OUT_KEY = 'beat-battle-opted-out';
-
 export default function BeatBattlePage() {
   const [tab, setTab] = useState<LobbyTab>('lobby');
   const [chatInput, setChatInput] = useState('');
@@ -76,12 +71,11 @@ export default function BeatBattlePage() {
     return () => clearInterval(t);
   }, []);
 
-  // Opt-out state. Drives whether we subscribe to battle:state events
-  // (joining the socket room + participant set) or render the rejoin
-  // splash. Persisted across mounts via OPT_OUT_KEY.
-  const [optedOut, setOptedOut] = useState<boolean>(() => {
-    try { return localStorage.getItem(OPT_OUT_KEY) === '1'; } catch { return false; }
-  });
+  // Opt-out state from the shared hook. Drives whether we subscribe
+  // to battle:state events (joining the socket room + participant
+  // set) or render the rejoin splash. Persists across mounts and
+  // syncs with ProjectHeaderBar / CollaboratorsBar / sidebar.
+  const optedOut = useBeatBattleOptOut();
 
   // Live lobby state via socket. battle.participants is the real list
   // of producers in the room; me.ready is what the Ready Up button
@@ -230,9 +224,8 @@ export default function BeatBattlePage() {
       const socket = getSocket();
       socket?.emit('battle:leave', { battleId: ARENA_ID });
     } catch { /* socket may be down — server cleanup will catch us */ }
-    try { localStorage.setItem(OPT_OUT_KEY, '1'); } catch { /* quota */ }
     try { localStorage.removeItem('beat-battle-auto-opened'); } catch { /* quota */ }
-    setOptedOut(true);
+    setBattleOptOut(true);
     window.dispatchEvent(new CustomEvent('ghost-go-home'));
   };
 
@@ -240,8 +233,7 @@ export default function BeatBattlePage() {
   // opt-out splash. Clearing the flag re-arms useBeatBattle below,
   // which fires battle:join on its next mount and pulls fresh state.
   const rejoinBattle = () => {
-    try { localStorage.removeItem(OPT_OUT_KEY); } catch { /* quota */ }
-    setOptedOut(false);
+    setBattleOptOut(false);
   };
 
   return (

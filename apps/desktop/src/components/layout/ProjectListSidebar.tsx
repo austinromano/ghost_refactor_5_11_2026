@@ -11,6 +11,7 @@ import UserVoiceBar from './UserVoiceBar';
 import EffectsSection from './EffectsSection';
 import InstrumentsSection from '../instruments/InstrumentsSection';
 import Avatar from '../common/Avatar';
+import { useBeatBattleOptOut } from '../../hooks/useBeatBattleOptOut';
 
 export type { SamplePack };
 
@@ -209,6 +210,13 @@ function ProjectListSidebar({
 }) {
   // Group online users by their currentProjectId once per render so each
   // row is an O(1) lookup instead of an O(n) scan.
+  // When the user has quit the battle, fold any beat-battle projects
+  // they own into the regular Beats section and hide the Beat Battles
+  // group entirely — visually nothing about an "active battle" should
+  // be left over.
+  const optedOutOfBattle = useBeatBattleOptOut();
+  const isBeatLike = (p: any) =>
+    p.projectType === 'beat' || (optedOutOfBattle && p.projectType === 'beat-battle');
   const usersByProject = useMemo(() => {
     const m = new Map<string, Array<{ userId: string; displayName: string; avatarUrl: string | null }>>();
     onlineActivity.forEach((u) => {
@@ -280,7 +288,7 @@ function ProjectListSidebar({
             </svg>
             <span className="text-[14px] font-bold text-white tracking-tight">Projects</span>
             {(() => {
-              const n = allProjects.filter((p: any) => p.projectType === 'beat').length;
+              const n = allProjects.filter(isBeatLike).length;
               return n > 0 ? <span className="ml-auto text-[11px] font-semibold text-white/30 tabular-nums">{n}</span> : null;
             })()}
           </div>
@@ -294,7 +302,7 @@ function ProjectListSidebar({
                 <span className="font-medium">New project</span>
               </button>
               {(() => {
-                const beats = sortByOrder(allProjects.filter((p: any) => p.projectType === 'beat'));
+                const beats = sortByOrder(allProjects.filter(isBeatLike));
                 const ids = beats.map((p: any) => p.id);
                 return (
                   <Reorder.Group
@@ -341,7 +349,7 @@ function ProjectListSidebar({
                   </Reorder.Group>
                 );
               })()}
-              {allProjects.filter((p: any) => p.projectType === 'beat').length === 0 && (
+              {allProjects.filter(isBeatLike).length === 0 && (
                 <p className="px-2 py-1.5 text-[13px] text-ghost-text-muted italic">No beats yet</p>
               )}
             </div>
@@ -349,7 +357,9 @@ function ProjectListSidebar({
         </div>
         </Reorder.Item>
           );
-          if (sectionKey === 'battles') return (
+          if (sectionKey === 'battles') {
+            if (optedOutOfBattle) return null;
+            return (
         <Reorder.Item key="battles" value="battles" style={{ listStyle: 'none' }} className="cursor-grab active:cursor-grabbing" whileDrag={{ scale: 1.02, zIndex: 50, boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
         {/* Beat Battles — projects auto-created by the Beat Battle lobby
             live here instead of the main Projects list so the competition
@@ -401,7 +411,8 @@ function ProjectListSidebar({
           </div>
         </div>
         </Reorder.Item>
-          );
+            );
+          }
           if (sectionKey === 'favorites') return (
         <Reorder.Item key="favorites" value="favorites" style={{ listStyle: 'none' }} className="cursor-grab active:cursor-grabbing" whileDrag={{ scale: 1.02, zIndex: 50, boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
         {/* Favorites dropdown */}

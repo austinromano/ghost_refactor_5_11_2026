@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { ProjectDetail } from '@ghost/types';
+import { useBeatBattleOptOut } from '../../hooks/useBeatBattleOptOut';
 
 interface Props {
   project: ProjectDetail;
@@ -61,6 +62,11 @@ export default function ProjectHeaderBar({
   project, canDelete, canRename, onNameChange, onTempoChange, onKeyChange, onTimeSignatureChange,
   onShowVersionHistory, onShareToFeed, onShareLink, onInvite, onDelete, onLeave,
 }: Props) {
+  // Once the user has quit the battle their countdown should freeze
+  // and the header should stop advertising the project as "live in a
+  // battle". The project metadata is unchanged on the server (others
+  // are still competing), this is purely a per-user UI suppression.
+  const optedOut = useBeatBattleOptOut();
   const [name, setName] = useState(project.name);
   const [bpm, setBpm] = useState(project.tempo ? String(project.tempo) : '');
   const [key, setKey] = useState(project.key || '');
@@ -167,7 +173,7 @@ export default function ProjectHeaderBar({
           onChange={(e) => debouncedKey(e.target.value.slice(0, 3))}
           onBlur={() => { if (keyTimer.current) clearTimeout(keyTimer.current); if (key) onKeyChange(key); }}
         />
-        {project.projectType === 'beat-battle' && project.battleEndsAt && (
+        {project.projectType === 'beat-battle' && project.battleEndsAt && !optedOut && (
           <BattleCountdown endsAt={project.battleEndsAt} />
         )}
       </div>
