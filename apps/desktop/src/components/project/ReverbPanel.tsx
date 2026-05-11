@@ -108,7 +108,7 @@ export default function ReverbPanel({
 
   return (
     <div
-      className="rounded-xl select-none"
+      className="rounded-xl select-none overflow-hidden"
       style={{
         width: PANEL_W,
         height: PANEL_H,
@@ -179,7 +179,7 @@ export default function ReverbPanel({
           pre-delay knob. */}
       <div className="flex" style={{ height: PANEL_H - 36 }}>
         <div className="flex flex-col flex-1 min-w-0">
-          <div className="flex px-2 pt-2 pb-1" style={{ height: 150 }}>
+          <div className="flex px-2 pt-2 pb-1" style={{ height: 122 }}>
             <ParticleRoom
               size={size} decay={decay} mix={mix}
               time={time} damping={damping} width={width}
@@ -610,13 +610,12 @@ function Knob({ label, valueLabel, value, min, max, onChange, large = false, com
   compact?: boolean;
 }) {
   const dragStartRef = useRef<{ y: number; v: number } | null>(null);
-  // Compact size bumped from 36 → 46 so the knobs read at a glance
-  // instead of looking like punctuation, but small enough that the
-  // 3-knob side stack (SIZE / DECAY / WIDTH) fits in 260 px without
-  // the bottom knob clipping past the panel edge. Large + default
-  // unchanged.
-  const SIZE = large ? 56 : compact ? 46 : 44;
-  const RADIUS = large ? 24 : compact ? 20 : 19;
+  // Compact size sized to fit the 252 px panel — 38 leaves enough
+  // headroom for label + value text per knob in both the bottom
+  // row (visualizer + knobs share 216 px) and the side stack
+  // (3 × knob in 216 px). Large + default unchanged.
+  const SIZE = large ? 56 : compact ? 38 : 44;
+  const RADIUS = large ? 24 : compact ? 16 : 19;
 
   const t = clamp((value - min) / (max - min), 0, 1);
   const startAngle = -135;
