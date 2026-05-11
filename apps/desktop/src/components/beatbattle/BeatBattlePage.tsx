@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useBeatBattle, type BattleParticipant, type BattleSubmissionMeta } from '../../hooks/useBeatBattle';
 import { useBeatBattleOptOut, setBattleOptOut } from '../../hooks/useBeatBattleOptOut';
-import { clearBattleSubmitted } from '../../hooks/useBeatBattleSubmitted';
+import { useBeatBattleSubmitted, clearBattleSubmitted } from '../../hooks/useBeatBattleSubmitted';
 import { useProjectStore } from '../../stores/projectStore';
 import { useAuthStore } from '../../stores/authStore';
 import { getSocket } from '../../lib/socket';
@@ -163,12 +163,17 @@ export default function BeatBattlePage() {
   // PluginLayout's selection guard would clear it, dropping them on
   // home instead of opening their own fresh project.
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
+  // After submit, the producer should sit on the lobby and watch the
+  // round finish — re-opening their project mid-spectate would
+  // immediately yank them out the moment they land on the lobby.
+  const alreadySubmittedToBattle = useBeatBattleSubmitted(ARENA_ID);
   const autoOpenedRef = useRef<string | null>(null);
   useEffect(() => {
     // Opted-out spectators must NEVER get auto-pulled into a project
     // — that's the whole point of quitting. The lobby still renders
     // live state for them, but production transitions are read-only.
     if (status !== 'active' || !battle || optedOut) return;
+    if (alreadySubmittedToBattle) return; // already locked in this round
     if (!currentUserId) return; // wait until auth restores
     const sessionKey = `${battle.battleId}::${battle.startsAt ?? ''}`;
     if (autoOpenedRef.current === sessionKey) return;
@@ -219,7 +224,7 @@ export default function BeatBattlePage() {
         if (import.meta.env.DEV) console.warn('[BeatBattle] auto-open failed:', err);
       }
     })();
-  }, [status, optedOut, currentUserId, battle?.battleId, battle?.startsAt, battle?.endsAt, battle?.kit, createProject]);
+  }, [status, optedOut, alreadySubmittedToBattle, currentUserId, battle?.battleId, battle?.startsAt, battle?.endsAt, battle?.kit, createProject]);
 
   const sendChat = () => {
     const trimmed = chatInput.trim();
