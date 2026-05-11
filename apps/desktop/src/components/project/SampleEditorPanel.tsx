@@ -423,9 +423,9 @@ function SamplerChainCard({ trackId }: { trackId: string }) {
         // number under the root-note display aren't clipped.
         width: 620,
         height: 296,
-        background: 'linear-gradient(180deg, #1A0F2E 0%, #0E0620 100%)',
-        border: '1px solid rgba(168,85,247,0.35)',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)',
+        background: 'rgba(15, 12, 32, 0.92)',
+        border: '1px solid rgba(168, 134, 255, 0.18)',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)',
       }}
     >
       {/* The embedded Sampler renders its own internal header

@@ -252,7 +252,7 @@ function SamplerBody({ projectId, trackId, inst, ensureInstrument, setInstrument
       onDrop={onSampleDrop}
       style={{
         // Match the reference render: deep navy gradient background.
-        background: 'linear-gradient(180deg, #1A0F2E 0%, #0E0620 100%)',
+        background: 'rgba(15, 12, 32, 0.92)',
       }}
     >
       <SamplerInternalHeader inst={inst} onRemove={onRemove} />
@@ -282,21 +282,21 @@ function SamplerInternalHeader({ inst, onRemove }: {
   const sampleName = inst?.fileId ? inst.name : 'Empty';
   return (
     <div
-      className="shrink-0 flex items-center gap-2 px-3"
-      style={{ height: 30, background: 'transparent' }}
+      className="shrink-0 flex items-center gap-2 px-3 py-2 border-b"
+      style={{ height: 36, borderColor: 'rgba(255,255,255,0.05)' }}
     >
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#E879F9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-        <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
-      </svg>
-      <span className="text-[11px] font-bold tracking-[0.18em] text-[#E879F9]">SAMPLER</span>
       <span
-        className="px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wider truncate max-w-[160px]"
+        className="w-3 h-3 rotate-45"
         style={{
-          background: 'rgba(124,58,237,0.35)',
-          color: '#D8B4FE',
-          border: '1px solid rgba(168,85,247,0.45)',
+          background: 'linear-gradient(135deg, #c084fc 0%, #7c3aed 100%)',
+          borderRadius: 2,
+          boxShadow: '0 0 6px #a855f7',
         }}
+      />
+      <span className="text-[12px] font-semibold text-white/90">Sampler</span>
+      <span className="text-white/30">·</span>
+      <span
+        className="text-[11px] text-white/65 truncate max-w-[180px]"
         title={sampleName}
       >
         {sampleName}
@@ -305,10 +305,13 @@ function SamplerInternalHeader({ inst, onRemove }: {
       {onRemove && (
         <button
           onClick={(e) => { e.stopPropagation(); onRemove(); }}
-          className="w-5 h-5 flex items-center justify-center rounded text-white/55 hover:text-white hover:bg-white/[0.10] transition-colors text-[14px] leading-none"
+          className="w-5 h-5 flex items-center justify-center rounded text-white/55 hover:text-white hover:bg-white/[0.10] transition-colors"
           title="Remove Sampler from this track"
         >
-          ×
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
         </button>
       )}
     </div>
@@ -757,11 +760,10 @@ function RootNoteSection({ value, onChange }: { value: number; onChange: (v: num
   );
 }
 
-// Simple circular knob — drag vertically to change value. Renders
-// an SVG arc that fills proportionally (range mapped 0..1). Used
-// for the four ADSR stages and the volume knob in the new bottom
-// row. Keeps interaction predictable by NOT using rotational drag
-// (which trips users up when the knob is small).
+// Circular knob matched to the ReverbPanel knob style: radial-gradient
+// capsule body with a subtle inset highlight, purple arc that lights
+// up around the perimeter, and a white tick line that points at the
+// current value. Vertical drag changes the value; shift = fine.
 function Knob({ label, min, max, step, value, format, onChange, large }: {
   label: string;
   min: number;
@@ -772,37 +774,41 @@ function Knob({ label, min, max, step, value, format, onChange, large }: {
   onChange: (v: number) => void;
   large?: boolean;
 }) {
-  const size = large ? 50 : 42;
-  const stroke = 4;
-  const radius = (size - stroke) / 2;
-  const cx = size / 2, cy = size / 2;
-  const norm = Math.max(0, Math.min(1, (value - min) / (max - min || 1)));
-
-  // Arc spans roughly 270° from bottom-left around to bottom-right —
-  // the standard knob "look". Computed in radians; the indicator
-  // dot sits at the current angle.
-  const startAngle = Math.PI * 0.75;
-  const endAngle = Math.PI * 2.25;
-  const cur = startAngle + (endAngle - startAngle) * norm;
-
-  const arcPath = (a0: number, a1: number) => {
-    const x0 = cx + radius * Math.cos(a0);
-    const y0 = cy + radius * Math.sin(a0);
-    const x1 = cx + radius * Math.cos(a1);
-    const y1 = cy + radius * Math.sin(a1);
-    const large = a1 - a0 > Math.PI ? 1 : 0;
-    return `M ${x0} ${y0} A ${radius} ${radius} 0 ${large} 1 ${x1} ${y1}`;
+  const ACCENT = '#a855f7';
+  const SIZE = large ? 44 : 36;
+  const RADIUS = large ? 19 : 14;
+  const t = Math.max(0, Math.min(1, (value - min) / (max - min || 1)));
+  const startAngle = -135;
+  const endAngle = 135;
+  const angle = startAngle + t * (endAngle - startAngle);
+  const cx = SIZE / 2;
+  const cy = SIZE / 2;
+  const toXY = (a: number) => {
+    const r = (a - 90) * (Math.PI / 180);
+    return [cx + RADIUS * Math.cos(r), cy + RADIUS * Math.sin(r)] as const;
   };
+  const [sx, sy] = toXY(startAngle);
+  const [ex, ey] = toXY(angle);
+  const [tx, ty] = toXY(endAngle);
+  const largeArcBg = endAngle - startAngle > 180 ? 1 : 0;
+  const largeArcFg = angle - startAngle > 180 ? 1 : 0;
+  const arcBg = `M ${sx.toFixed(2)} ${sy.toFixed(2)} A ${RADIUS} ${RADIUS} 0 ${largeArcBg} 1 ${tx.toFixed(2)} ${ty.toFixed(2)}`;
+  const arcFg = `M ${sx.toFixed(2)} ${sy.toFixed(2)} A ${RADIUS} ${RADIUS} 0 ${largeArcFg} 1 ${ex.toFixed(2)} ${ey.toFixed(2)}`;
+  const [tickX, tickY] = toXY(angle);
+  const tickInnerR = RADIUS - 9;
+  const tickInner = (() => {
+    const r = (angle - 90) * (Math.PI / 180);
+    return [cx + tickInnerR * Math.cos(r), cy + tickInnerR * Math.sin(r)];
+  })();
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
     e.preventDefault();
+    (e.target as Element).setPointerCapture?.(e.pointerId);
     const startY = e.clientY;
     const startVal = value;
     const onMove = (mv: PointerEvent) => {
       const dy = startY - mv.clientY;
-      // 100 px of vertical drag = full range. Hold shift for fine
-      // control (10 × less sensitive).
       const sensitivity = mv.shiftKey ? 1000 : 100;
       const next = startVal + (dy / sensitivity) * (max - min);
       const clamped = Math.max(min, Math.min(max, next));
@@ -817,31 +823,31 @@ function Knob({ label, min, max, step, value, format, onChange, large }: {
     window.addEventListener('pointerup', onUp);
   };
 
-  const dotX = cx + radius * Math.cos(cur);
-  const dotY = cy + radius * Math.sin(cur);
-
   return (
-    <div className="flex flex-col items-center select-none" style={{ minWidth: large ? 56 : 50 }}>
+    <div className="flex flex-col items-center select-none">
       {label && (
-        <div className="text-[9.5px] font-bold tracking-[0.18em] uppercase text-white/55">{label}</div>
+        <span className="text-[9.5px] uppercase text-white/55 leading-none mb-[3px]" style={{ letterSpacing: '0.03em' }}>{label}</span>
       )}
-      <svg
-        width={size} height={size} viewBox={`0 0 ${size} ${size}`}
+      <div
         onPointerDown={onPointerDown}
-        style={{ cursor: 'ns-resize', touchAction: 'none' }}
+        style={{
+          width: SIZE,
+          height: SIZE,
+          cursor: 'ns-resize',
+          touchAction: 'none',
+          borderRadius: '50%',
+          background: 'radial-gradient(circle at 50% 35%, #2c1f54 0%, #14102b 80%)',
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.10), inset 0 -2px 4px rgba(0,0,0,0.35), 0 0 12px rgba(168,85,247,0.20)',
+          border: '1px solid rgba(168, 134, 255, 0.22)',
+        }}
       >
-        {/* Background ring */}
-        <path d={arcPath(startAngle, endAngle)} stroke="rgba(255,255,255,0.10)" strokeWidth={stroke} fill="none" strokeLinecap="round" />
-        {/* Filled arc */}
-        {norm > 0 && (
-          <path d={arcPath(startAngle, cur)} stroke="#A855F7" strokeWidth={stroke} fill="none" strokeLinecap="round" style={{ filter: 'drop-shadow(0 0 3px rgba(168,85,247,0.55))' }} />
-        )}
-        {/* Inner cap */}
-        <circle cx={cx} cy={cy} r={radius - stroke - 1} fill="rgba(0,0,0,0.45)" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
-        {/* Indicator dot */}
-        <circle cx={dotX} cy={dotY} r={2.5} fill="#F0ABFC" />
-      </svg>
-      <div className="text-[9.5px] font-mono tabular-nums text-white/70 mt-0.5">{format(value)}</div>
+        <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} style={{ display: 'block' }}>
+          <path d={arcBg} stroke="rgba(255,255,255,0.08)" strokeWidth={2.5} fill="none" strokeLinecap="round" />
+          <path d={arcFg} stroke={ACCENT} strokeWidth={2.5} fill="none" strokeLinecap="round" style={{ filter: `drop-shadow(0 0 3px ${ACCENT})` }} />
+          <line x1={tickInner[0]} y1={tickInner[1]} x2={tickX} y2={tickY} stroke="#ffffff" strokeWidth={2} strokeLinecap="round" />
+        </svg>
+      </div>
+      <span className="text-[11.5px] font-semibold tabular-nums text-white/90 leading-none mt-1">{format(value)}</span>
     </div>
   );
 }
