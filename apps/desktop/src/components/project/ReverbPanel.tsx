@@ -37,7 +37,7 @@ const ACCENT = '#a855f7';
 // the iso-stack visualization centerpiece breathes and the side knob
 // stack doesn't crowd against it.
 const PANEL_W = 540;
-const PANEL_H = 296;
+const PANEL_H = 252;
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));

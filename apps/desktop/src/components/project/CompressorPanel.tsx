@@ -340,7 +340,7 @@ export default function CompressorPanel({
         // pins the header to the top and the knob row to the bottom
         // — the meters + curve + readouts block sits in the middle
         // and a flex-1 spacer fills any remaining gap.
-        height: 296,
+        height: 252,
         background: 'rgba(15, 12, 32, 0.92)',
         border: '1px solid rgba(168, 134, 255, 0.18)',
         boxShadow: '0 8px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)',

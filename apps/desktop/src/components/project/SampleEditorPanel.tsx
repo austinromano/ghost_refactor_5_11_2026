@@ -422,7 +422,7 @@ function SamplerChainCard({ trackId }: { trackId: string }) {
         // little slack so knob value readouts and the MIDI NOTE
         // number under the root-note display aren't clipped.
         width: 620,
-        height: 296,
+        height: 252,
         background: 'rgba(15, 12, 32, 0.92)',
         border: '1px solid rgba(168, 134, 255, 0.18)',
         boxShadow: '0 8px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)',

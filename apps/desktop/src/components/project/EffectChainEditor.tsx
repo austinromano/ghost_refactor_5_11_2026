@@ -56,7 +56,7 @@ export default function EffectChainEditor({ laneKey, embedded = false, emptyMess
       className="shrink-0 self-stretch flex items-center justify-center rounded-xl select-none transition-colors"
       style={{
         width: 110,
-        height: 296,
+        height: 252,
         border: railDragOver ? '2px dashed rgba(168, 85, 247, 0.85)' : '1.5px dashed rgba(255,255,255,0.10)',
         background: railDragOver ? 'rgba(168, 85, 247, 0.12)' : 'rgba(255,255,255,0.02)',
       }}
@@ -401,7 +401,7 @@ function EmptyChainDropzoneInline({ laneKey, message }: { laneKey: string; messa
       onDrop={onDrop}
       className="flex-1 min-w-[260px] rounded-xl flex items-center justify-center px-4 text-center transition-colors"
       style={{
-        height: 296,
+        height: 252,
         border: dragOver ? '2px dashed rgba(168, 85, 247, 0.85)' : '1.5px dashed rgba(255,255,255,0.10)',
         background: dragOver ? 'rgba(168, 85, 247, 0.12)' : 'rgba(255,255,255,0.02)',
       }}

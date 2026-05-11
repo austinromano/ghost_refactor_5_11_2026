@@ -22,7 +22,10 @@ const LOG_MIN = Math.log10(20);     // 20 Hz
 const LOG_MAX = Math.log10(20000);  // 20 kHz
 const GAIN_RANGE = 12;              // ±12 dB clamp
 
-const VIEW_W = 280;
+// Wider graph so all four band controls (label + knob + freq + dB)
+// fit comfortably underneath without crowding. Panel chrome adds
+// ~24 px around the SVG so total panel width comes out near 460.
+const VIEW_W = 420;
 const VIEW_H = 130;
 const PAD_X = 12;
 const PAD_Y = 8;
@@ -266,11 +269,11 @@ export default function ChannelEqPanel({
       style={{
         width: VIEW_W + 24,
         // Locked to PANEL_HEIGHT — CompressorPanel + ReverbPanel +
-        // SamplerChainCard all use 296 so every device card lines up
+        // SamplerChainCard all use 252 so every device card lines up
         // at the same pixel height in the chain rail. flex-col lets
         // the band readout row claim the remaining space below the
         // graph instead of leaving an empty gap at the bottom.
-        height: 296,
+        height: 252,
         background: 'rgba(15, 12, 32, 0.92)',
         border: '1px solid rgba(168, 134, 255, 0.18)',
         boxShadow: '0 8px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)',
@@ -492,24 +495,115 @@ export default function ChannelEqPanel({
         </svg>
       </div>
 
-      {/* Band readouts — simple label / Hz / dB stack per band. The
-          flex-1 wrapper claims the empty space below the graph and
-          centers the readouts vertically so they don't collapse to
-          the top of the available room. */}
-      <div className="flex-1 grid grid-cols-4 gap-2 px-3 items-center border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+      {/* Band controls — one cell per band: label, gain knob, freq
+          + gain readouts. Drag any knob vertically (shift = fine)
+          to change that band's gain; double-click resets to 0 dB.
+          Frequency stays on the graph nodes — drag the dot
+          horizontally to slide a band, just like before. */}
+      <div className="flex-1 grid grid-cols-4 gap-1 px-3 items-center border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
         {bands.map((band, idx) => (
-          <div key={idx} className="flex flex-col items-center text-center">
-            <span className="text-[9.5px] text-white/45 uppercase tracking-wider">{EQ_BAND_LABELS[idx]}</span>
-            <span className="text-[12px] font-semibold text-white/90 tabular-nums mt-0.5">{formatFreq(band.freq)}</span>
-            <span
-              className="text-[11px] tabular-nums mt-1"
-              style={{ color: band.gain === 0 ? 'rgba(255,255,255,0.5)' : (band.gain > 0 ? '#c4b5fd' : '#a78bfa') }}
-            >
-              {formatGain(band.gain)}
-            </span>
+          <div key={idx} className="flex flex-col items-center text-center select-none">
+            <span className="text-[9px] text-white/45 uppercase tracking-wider leading-none mb-1">{EQ_BAND_LABELS[idx]}</span>
+            <EqBandKnob
+              value={band.gain}
+              onChange={(v) => setEqBand(laneKey, effect.id, idx, { gain: v })}
+            />
+            <div className="flex items-baseline gap-1 mt-0.5">
+              <span className="text-[10px] font-semibold text-white/85 tabular-nums">{formatFreq(band.freq)}</span>
+              <span
+                className="text-[9.5px] tabular-nums"
+                style={{ color: band.gain === 0 ? 'rgba(255,255,255,0.45)' : (band.gain > 0 ? '#c4b5fd' : '#a78bfa') }}
+              >
+                {formatGain(band.gain)}
+              </span>
+            </div>
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// Per-band gain knob — same radial-capsule style the Reverb uses so
+// every plugin's knob reads the same. Drag vertically to change gain;
+// shift = fine; double-click resets to 0 dB. ±12 dB range mapped to
+// the standard 270° arc with 0 dB at the top of the arc (12 o'clock).
+function EqBandKnob({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const ACCENT = '#a855f7';
+  const SIZE = 38;
+  const RADIUS = 15;
+  const t = Math.max(0, Math.min(1, (value + GAIN_RANGE) / (GAIN_RANGE * 2)));
+  const startAngle = -135;
+  const endAngle = 135;
+  const angle = startAngle + t * (endAngle - startAngle);
+  const cx = SIZE / 2;
+  const cy = SIZE / 2;
+  const toXY = (a: number) => {
+    const r = (a - 90) * (Math.PI / 180);
+    return [cx + RADIUS * Math.cos(r), cy + RADIUS * Math.sin(r)] as const;
+  };
+  const [sx, sy] = toXY(startAngle);
+  const [ex, ey] = toXY(angle);
+  const [tx, ty] = toXY(endAngle);
+  const [zx, zy] = toXY(0); // 0 dB lives at the top (12 o'clock)
+  const largeArcBg = endAngle - startAngle > 180 ? 1 : 0;
+  const largeArcFg = Math.abs(angle - 0) > 180 ? 1 : 0;
+  const arcBg = `M ${sx.toFixed(2)} ${sy.toFixed(2)} A ${RADIUS} ${RADIUS} 0 ${largeArcBg} 1 ${tx.toFixed(2)} ${ty.toFixed(2)}`;
+  // Foreground arc runs from 0 dB → current value, so a positive
+  // gain sweeps clockwise from the top and a negative gain sweeps
+  // counter-clockwise. Empty when value is exactly 0.
+  const arcFg = angle === 0
+    ? ''
+    : `M ${zx.toFixed(2)} ${zy.toFixed(2)} A ${RADIUS} ${RADIUS} 0 ${largeArcFg} ${angle > 0 ? 1 : 0} ${ex.toFixed(2)} ${ey.toFixed(2)}`;
+  const [tickX, tickY] = toXY(angle);
+  const tickInnerR = RADIUS - 8;
+  const tickInner = (() => {
+    const r = (angle - 90) * (Math.PI / 180);
+    return [cx + tickInnerR * Math.cos(r), cy + tickInnerR * Math.sin(r)];
+  })();
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+    const startY = e.clientY;
+    const startVal = value;
+    const onMove = (mv: PointerEvent) => {
+      const dy = startY - mv.clientY;
+      const sensitivity = mv.shiftKey ? 600 : 100;
+      const next = startVal + (dy / sensitivity) * (GAIN_RANGE * 2);
+      onChange(Math.max(-GAIN_RANGE, Math.min(GAIN_RANGE, next)));
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+  return (
+    <div
+      onPointerDown={onPointerDown}
+      onDoubleClick={() => onChange(0)}
+      style={{
+        width: SIZE,
+        height: SIZE,
+        cursor: 'ns-resize',
+        touchAction: 'none',
+        borderRadius: '50%',
+        background: 'radial-gradient(circle at 50% 35%, #2c1f54 0%, #14102b 80%)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.10), inset 0 -2px 4px rgba(0,0,0,0.35), 0 0 10px rgba(168,85,247,0.18)',
+        border: '1px solid rgba(168, 134, 255, 0.22)',
+      }}
+      title="Drag to change gain · double-click to reset"
+    >
+      <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} style={{ display: 'block' }}>
+        <path d={arcBg} stroke="rgba(255,255,255,0.08)" strokeWidth={2.5} fill="none" strokeLinecap="round" />
+        {arcFg && (
+          <path d={arcFg} stroke={ACCENT} strokeWidth={2.5} fill="none" strokeLinecap="round" style={{ filter: `drop-shadow(0 0 3px ${ACCENT})` }} />
+        )}
+        <line x1={tickInner[0]} y1={tickInner[1]} x2={tickX} y2={tickY} stroke="#ffffff" strokeWidth={2} strokeLinecap="round" />
+      </svg>
     </div>
   );
 }
