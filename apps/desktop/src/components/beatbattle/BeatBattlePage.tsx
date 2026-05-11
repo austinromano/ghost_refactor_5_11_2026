@@ -213,7 +213,7 @@ function Hero({ secondsLeft, fmtTime, ready, onReady, readyCount }: {
         className="flex flex-col justify-between p-6 rounded-2xl overflow-hidden relative"
         style={{
           // Cinematic hero. Background-image hook expects a file at
-          // `/beat-battle-hero.jpg` in the server's public folder —
+          // `/beat-battle-hero.png` in the server's public folder —
           // generate with ChatGPT (or any image source) and drop it
           // there. While missing, the layered gradients still produce
           // a moody concert-stage feel so the card never looks blank.
@@ -221,7 +221,7 @@ function Hero({ secondsLeft, fmtTime, ready, onReady, readyCount }: {
             'linear-gradient(90deg, rgba(7,3,15,0.95) 0%, rgba(7,3,15,0.55) 45%, rgba(7,3,15,0.20) 70%, rgba(7,3,15,0) 100%), ' +
             'radial-gradient(ellipse at top right, rgba(232,121,249,0.30), transparent 55%), ' +
             'radial-gradient(ellipse at bottom right, rgba(168,85,247,0.25), transparent 60%), ' +
-            "url('/beat-battle-hero.jpg')",
+            "url('/beat-battle-hero.png')",
           backgroundSize: 'cover',
           backgroundPosition: 'right center',
           backgroundRepeat: 'no-repeat',
