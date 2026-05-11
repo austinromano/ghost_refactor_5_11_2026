@@ -220,7 +220,7 @@ export default function ReverbPanel({
           </div>
         </div>
         <div
-          className="flex flex-col items-center justify-center gap-4 shrink-0 px-3 py-2 border-l"
+          className="flex flex-col items-center justify-around shrink-0 px-3 py-1 border-l"
           style={{ width: 86, borderColor: 'rgba(255,255,255,0.05)' }}
         >
           <Knob
@@ -610,12 +610,13 @@ function Knob({ label, valueLabel, value, min, max, onChange, large = false, com
   compact?: boolean;
 }) {
   const dragStartRef = useRef<{ y: number; v: number } | null>(null);
-  // Bumped compact size up from 36/14 → 50/22 so the knobs read at
-  // a glance instead of looking like punctuation. Large + default
-  // unchanged so the existing big-knob use cases keep their
-  // proportions; only the chain-rail knobs swap to the new size.
-  const SIZE = large ? 56 : compact ? 50 : 44;
-  const RADIUS = large ? 24 : compact ? 22 : 19;
+  // Compact size bumped from 36 → 46 so the knobs read at a glance
+  // instead of looking like punctuation, but small enough that the
+  // 3-knob side stack (SIZE / DECAY / WIDTH) fits in 260 px without
+  // the bottom knob clipping past the panel edge. Large + default
+  // unchanged.
+  const SIZE = large ? 56 : compact ? 46 : 44;
+  const RADIUS = large ? 24 : compact ? 20 : 19;
 
   const t = clamp((value - min) / (max - min), 0, 1);
   const startAngle = -135;
