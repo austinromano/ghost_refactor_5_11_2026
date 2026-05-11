@@ -236,10 +236,13 @@ export interface ServerToClientEvents {
   }) => void;
   // Private response to a battle:fetch-submission request. audio is
   // null when the submission isn't on the server (e.g. older client
-  // that flagged submitted without sending the bytes).
+  // that flagged submitted without sending the bytes). The runtime
+  // payload is a Node Buffer server-side and arrives as an ArrayBuffer
+  // on the client — typed as `unknown` here so the protocol package
+  // doesn't have to depend on @types/node (Buffer isn't a DOM type).
   'battle:submission-audio': (data: {
     userId: string;
-    audio: ArrayBuffer | Buffer | null;
+    audio: unknown;
     mime: string | null;
   }) => void;
   'battle:message': (data: {

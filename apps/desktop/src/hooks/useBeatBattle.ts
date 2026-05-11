@@ -124,15 +124,16 @@ export function useBeatBattle(battleId: string | null, opts?: { spectator?: bool
     const socket = getSocket();
     if (!socket) return Promise.resolve(null);
     return new Promise<Blob | null>((resolve) => {
-      const handler = (payload: { userId: string; audio: ArrayBuffer | Uint8Array | null; mime: string | null }) => {
+      // audio is typed as `unknown` in the protocol so the shared
+      // package doesn't depend on Node's Buffer — runtime, it's an
+      // ArrayBuffer/Uint8Array/Blob from socket.io's binary transport.
+      const handler = (payload: { userId: string; audio: unknown; mime: string | null }) => {
         if (payload.userId !== userId) return;
         socket.off('battle:submission-audio', handler);
         if (!payload.audio || !payload.mime) {
           resolve(null);
           return;
         }
-        // socket.io can hand us either ArrayBuffer or Uint8Array
-        // depending on engine.io transport — Blob() accepts both.
         try {
           resolve(new Blob([payload.audio as BlobPart], { type: payload.mime }));
         } catch {
