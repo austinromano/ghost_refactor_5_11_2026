@@ -4,7 +4,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { useProjectStore } from '../../stores/projectStore';
 import { api } from '../../lib/api';
 import { onGlobalOnlineUsers, getSocket, type OnlineUser } from '../../lib/socket';
-import { setBattleOptOut } from '../../hooks/useBeatBattleOptOut';
+import { setBattleOptOut, useBeatBattleOptOut } from '../../hooks/useBeatBattleOptOut';
 import Avatar from '../common/Avatar';
 import ChatPanel from '../session/ChatPanel';
 import { useSessionStore } from '../../stores/sessionStore';
@@ -41,6 +41,7 @@ import ArrangementComments from '../project/ArrangementComments';
 import SampleEditorPanel from '../project/SampleEditorPanel';
 import DrumRackPanel from '../project/DrumRackPanel';
 import BeatBattlePage from '../beatbattle/BeatBattlePage';
+import SubmitBeatModal from '../beatbattle/SubmitBeatModal';
 import PianoRollPanel, { PianoRollOpenButton, AddMidiTrackButton } from '../project/PianoRollPanel';
 import Sampler from '../instruments/Sampler';
 import SamplePackContentView from './SamplePackContentView';
@@ -374,6 +375,12 @@ export default function PluginLayout() {
   // panel underneath.
   const [showRecord, setShowRecord] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  // Beat Battle submission modal — opened by the Submit Beat button
+  // that replaces Download in beat-battle projects. PluginLayout owns
+  // the open state because it also owns post-submit navigation back
+  // to the lobby.
+  const [showSubmitBeat, setShowSubmitBeat] = useState(false);
+  const optedOutOfBattle = useBeatBattleOptOut();
   const [friends, setFriends] = useState<{ id: string; displayName: string; avatarUrl: string | null }[]>([]);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [reverting, setReverting] = useState(false);
@@ -880,6 +887,25 @@ export default function PluginLayout() {
               <InviteModal open={showInvite} onClose={() => setShowInvite(false)} projectId={selectedProjectId} />
             )}
             <RecordVerticalOverlay open={showRecord} onClose={() => setShowRecord(false)} />
+            {/* Beat Battle Submit modal — renders the arrangement,
+                previews the bounce, and on confirm fires battle:submit
+                + drops the user back into the lobby (spectator mode)
+                to watch the rest of the timer tick out. */}
+            {showSubmitBeat && currentProject && (currentProject as any).battleId && (
+              <SubmitBeatModal
+                open={showSubmitBeat}
+                battleId={(currentProject as any).battleId}
+                onClose={() => setShowSubmitBeat(false)}
+                onSubmitted={() => {
+                  setShowSubmitBeat(false);
+                  // Land on the Beat Battle lobby (now in spectator
+                  // mode after setBattleOptOut inside the modal) so
+                  // the producer watches the clock run out while
+                  // their tile in the players grid shows Submitted.
+                  window.dispatchEvent(new CustomEvent('ghost-go-beat-battle'));
+                }}
+              />
+            )}
             {showInvite && samplePackState.selectedPackId && !selectedProjectId && (
               <InviteModal open={showInvite} onClose={() => setShowInvite(false)} projectId={samplePackState.selectedPackId} />
             )}
@@ -1029,7 +1055,23 @@ export default function PluginLayout() {
                               onFilesAdded={() => fetchProject(selectedProjectId!)}
                               isBeat={isBeatView}
                               compact={trackZoom === 'half'}
-                              rightSlot={(currentProject as any)?.projectType === 'beat-battle' ? null : (
+                              rightSlot={(currentProject as any)?.projectType === 'beat-battle' && !optedOutOfBattle ? (
+                                <motion.button
+                                  onClick={() => setShowSubmitBeat(true)}
+                                  className="w-[150px] h-11 rounded-full text-white text-[14px] font-bold tracking-[0.08em] uppercase flex items-center justify-center gap-2 transition-all shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(168,85,247,0.4),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] shrink-0"
+                                  style={{ background: 'linear-gradient(180deg, #a855f7 0%, #7c3aed 100%)' }}
+                                  whileHover={{ scale: 1.05 }}
+                                  whileTap={{ scale: 0.95 }}
+                                  title="Bounce the arrangement and submit it to the battle"
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                    <polyline points="17 8 12 3 7 8" />
+                                    <line x1="12" y1="3" x2="12" y2="15" />
+                                  </svg>
+                                  Submit Beat
+                                </motion.button>
+                              ) : (
                                 <motion.button
                                   onClick={handleDownloadStems}
                                   className="w-[120px] h-11 rounded-full text-white text-[14px] font-semibold flex items-center justify-center gap-2 transition-all shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(124,58,237,0.4),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] shrink-0"

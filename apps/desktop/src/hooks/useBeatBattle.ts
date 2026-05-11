@@ -11,6 +11,9 @@ export interface BattleParticipant {
   avatarUrl: string | null;
   ready: boolean;
   joinedAt: string;
+  // True once the producer fires battle:submit. Lobby tiles show a
+  // "Submitted" badge instead of the ready/waiting status.
+  submitted?: boolean;
 }
 
 export interface BattleState {

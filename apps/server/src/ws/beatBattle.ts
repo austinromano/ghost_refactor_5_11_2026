@@ -16,6 +16,11 @@ interface Participant {
   avatarUrl: string | null;
   ready: boolean;
   joinedAt: string;
+  // Set true when the producer fires battle:submit during the
+  // 'active' phase. Once flipped, the lobby shows their tile with a
+  // "Submitted" badge and they're free to sit out the rest of the
+  // countdown without losing their slot.
+  submitted: boolean;
 }
 
 interface Battle {
@@ -100,7 +105,10 @@ function resetToWaiting(battle: Battle) {
   battle.status = 'waiting';
   battle.startsAt = null;
   battle.endsAt = null;
-  for (const p of battle.participants.values()) p.ready = false;
+  for (const p of battle.participants.values()) {
+    p.ready = false;
+    p.submitted = false;
+  }
 }
 
 // State-machine driver. Called after every join/leave/ready mutation
@@ -190,9 +198,24 @@ export function registerBeatBattleHandlers(io: IO, socket: SK) {
         avatarUrl: socket.data.avatarUrl ?? null,
         ready: false,
         joinedAt: new Date().toISOString(),
+        submitted: false,
       });
     }
     evaluateTransitions(io, battle);
+    broadcast(io, battle);
+  });
+
+  // Producer hits "Submit Beat" in their project. We just flip the
+  // submitted flag on their participant record and rebroadcast so
+  // every lobby viewer sees the badge. Vote-ready audio + judging
+  // are still v2 — the flag is what the UI keys off of for v1.
+  socket.on('battle:submit', ({ battleId }) => {
+    const battle = BATTLES.get(battleId);
+    if (!battle) return;
+    const me = battle.participants.get(socket.data.userId);
+    if (!me) return;
+    if (battle.status !== 'active') return; // ignore early/late submits
+    me.submitted = true;
     broadcast(io, battle);
   });
 

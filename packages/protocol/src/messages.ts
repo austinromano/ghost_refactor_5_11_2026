@@ -82,6 +82,9 @@ export interface ClientToServerEvents {
   'battle:join': (data: { battleId: string; spectator?: boolean }) => void;
   'battle:leave': (data: { battleId: string }) => void;
   'battle:ready': (data: { battleId: string; ready: boolean }) => void;
+  // Producer locked in their bounce — server flips submitted=true on
+  // the participant and broadcasts so the lobby shows the badge.
+  'battle:submit': (data: { battleId: string }) => void;
   // Lobby chat — text-only for v1. Server validates length, stamps
   // the message with a UUID + createdAt, and rebroadcasts to the
   // battle room.

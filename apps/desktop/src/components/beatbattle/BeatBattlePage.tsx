@@ -19,7 +19,7 @@ interface Player {
   id: string;
   name: string;
   avatarHue: number;
-  status: 'ready' | 'waiting';
+  status: 'ready' | 'waiting' | 'submitted';
   badge?: string;
 }
 
@@ -207,7 +207,10 @@ export default function BeatBattlePage() {
       id: p.userId,
       name: p.displayName,
       avatarHue: hashHue(p.userId),
-      status: p.ready ? 'ready' : 'waiting',
+      // During production the most useful signal is "did they
+      // submit?" — once flipped it overrides ready/waiting so the
+      // tile stays visibly "locked in" for the rest of the round.
+      status: p.submitted ? 'submitted' : p.ready ? 'ready' : 'waiting',
     }));
     while (mapped.length < max) {
       mapped.push({ id: `empty-${mapped.length}`, name: '— open slot —', avatarHue: 0, status: 'waiting' });
@@ -595,42 +598,65 @@ function Hero({ status, kit, secondsLeft, fmtTime, ready, onReady, readyCount, j
 function PlayersGrid({ players, youReady, maxPlayers }: { players: Player[]; youReady: boolean; maxPlayers: number }) {
   const filled = players.filter((p) => !p.id.startsWith('empty-')).length;
   const readyHere = players.filter((p) => p.status === 'ready').length;
+  const submittedHere = players.filter((p) => p.status === 'submitted').length;
   return (
     <div className="p-4 rounded-2xl" style={{ background: 'rgba(15, 12, 32, 0.92)', border: '1px solid rgba(168, 134, 255, 0.18)' }}>
       <div className="flex items-center justify-between mb-3">
         <div className="text-[10px] font-bold tracking-[0.18em] uppercase text-white/55">Players ({filled}/{maxPlayers})</div>
         <div className="flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-          <span className="text-[9.5px] text-white/45">{readyHere + (youReady ? 1 : 0)} ready</span>
+          {submittedHere > 0 ? (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#E879F9', boxShadow: '0 0 6px rgba(232,121,249,0.7)' }} />
+              <span className="text-[9.5px] text-white/55">{submittedHere} submitted</span>
+            </>
+          ) : (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <span className="text-[9.5px] text-white/45">{readyHere + (youReady ? 1 : 0)} ready</span>
+            </>
+          )}
         </div>
       </div>
       <div className="grid grid-cols-4 gap-2.5">
-        {players.map((p) => (
-          <div key={p.id} className="flex flex-col items-center gap-1 p-2 rounded-lg" style={{ background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <div
-              className="w-10 h-10 rounded-full relative flex items-center justify-center text-[14px] font-bold"
-              style={{
-                background: `linear-gradient(135deg, hsl(${p.avatarHue}, 70%, 55%), hsl(${(p.avatarHue + 40) % 360}, 70%, 35%))`,
-                boxShadow: p.status === 'ready' ? '0 0 10px rgba(16, 185, 129, 0.45)' : 'none',
-              }}
-            >
-              {p.name[0].toUpperCase()}
-              {p.status === 'ready' && (
-                <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center" style={{ border: '2px solid #0E0620' }}>
-                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                </span>
-              )}
+        {players.map((p) => {
+          const isSubmitted = p.status === 'submitted';
+          const isReady = p.status === 'ready';
+          const glow = isSubmitted
+            ? '0 0 12px rgba(232,121,249,0.55)'
+            : isReady ? '0 0 10px rgba(16, 185, 129, 0.45)' : 'none';
+          const labelColour = isSubmitted ? '#E879F9' : isReady ? '#34D399' : '#FBBF24';
+          return (
+            <div key={p.id} className="flex flex-col items-center gap-1 p-2 rounded-lg" style={{ background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div
+                className="w-10 h-10 rounded-full relative flex items-center justify-center text-[14px] font-bold"
+                style={{
+                  background: `linear-gradient(135deg, hsl(${p.avatarHue}, 70%, 55%), hsl(${(p.avatarHue + 40) % 360}, 70%, 35%))`,
+                  boxShadow: glow,
+                }}
+              >
+                {p.name[0].toUpperCase()}
+                {isSubmitted && (
+                  <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center" style={{ border: '2px solid #0E0620', background: '#E879F9' }}>
+                    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </span>
+                )}
+                {isReady && (
+                  <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center" style={{ border: '2px solid #0E0620' }}>
+                    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </span>
+                )}
+              </div>
+              <div className="text-[10px] font-semibold text-white/80 truncate w-full text-center">{p.name}</div>
+              <div className="text-[8.5px] tracking-wider uppercase" style={{ color: labelColour }}>
+                {p.status}
+              </div>
             </div>
-            <div className="text-[10px] font-semibold text-white/80 truncate w-full text-center">{p.name}</div>
-            <div className="text-[8.5px] tracking-wider uppercase"
-              style={{ color: p.status === 'ready' ? '#34D399' : '#FBBF24' }}
-            >
-              {p.status}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
