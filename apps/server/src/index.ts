@@ -107,8 +107,18 @@ app.use('*', async (c, next) => {
     c.res.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     c.res.headers.set('Pragma', 'no-cache');
     c.res.headers.set('Expires', '0');
-  } else if (path.startsWith('/assets/') || path.match(/\.(js|css|woff2?|png|jpg|svg|ico)$/i)) {
+  } else if (path.startsWith('/assets/')) {
+    // /assets/ filenames are content-hashed by Vite, so caching them
+    // forever is safe — the URL itself changes on every build.
     c.res.headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+  } else if (path.match(/\.(js|css|woff2?|png|jpg|jpeg|gif|svg|webp|ico)$/i)) {
+    // Root-level assets (un-hashed: beat-battle-hero.png, worklets,
+    // favicons, etc.) get a SHORT cache so a replacement actually
+    // propagates. Previously they shared the 1-year immutable cache
+    // with /assets/, and a stale 404 from a missing route would stick
+    // in browser cache forever even after the server started serving
+    // the file correctly.
+    c.res.headers.set('Cache-Control', 'public, max-age=300');
   }
 });
 

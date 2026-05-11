@@ -221,7 +221,7 @@ function Hero({ secondsLeft, fmtTime, ready, onReady, readyCount }: {
             'linear-gradient(90deg, rgba(7,3,15,0.95) 0%, rgba(7,3,15,0.55) 45%, rgba(7,3,15,0.20) 70%, rgba(7,3,15,0) 100%), ' +
             'radial-gradient(ellipse at top right, rgba(232,121,249,0.30), transparent 55%), ' +
             'radial-gradient(ellipse at bottom right, rgba(168,85,247,0.25), transparent 60%), ' +
-            "url('/beat-battle-hero.png')",
+            "url('/beat-battle-hero.png?v=2')",
           backgroundSize: 'cover',
           backgroundPosition: 'right center',
           backgroundRepeat: 'no-repeat',
