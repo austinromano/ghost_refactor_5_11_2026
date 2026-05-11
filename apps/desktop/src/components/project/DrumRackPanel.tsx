@@ -189,21 +189,12 @@ export default function DrumRackPanel({ projectId }: { projectId: string }) {
     }
   };
 
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        className="absolute right-12 top-1 z-30 px-2 h-7 flex items-center gap-1 rounded text-[10px] font-semibold uppercase tracking-wider bg-black/40 text-white/60 hover:bg-white/[0.08] hover:text-white transition-colors"
-        title="Open drum rack"
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="3" width="6" height="6" rx="1" /><rect x="15" y="3" width="6" height="6" rx="1" />
-          <rect x="3" y="15" width="6" height="6" rx="1" /><rect x="15" y="15" width="6" height="6" rx="1" />
-        </svg>
-        Drum Rack
-      </button>
-    );
-  }
+  // No standalone open button — clicking any drum clip in the
+  // arrangement (or clicking empty space on the drum-rack lane to
+  // create a fresh clip) sets the rack open via setOpen(true) in
+  // ArrangementComponents.tsx, so the rack opens itself when there's
+  // something to edit.
+  if (!open) return null;
 
   // Inner panel — same UI whether docked or floating. Wrapped below
   // by either the original arrangement-column container (docked) or
