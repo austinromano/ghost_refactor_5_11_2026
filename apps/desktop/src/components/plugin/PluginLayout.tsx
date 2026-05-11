@@ -39,6 +39,7 @@ import MasterBusLane from '../project/MasterBusLane';
 import ArrangementComments from '../project/ArrangementComments';
 import SampleEditorPanel from '../project/SampleEditorPanel';
 import DrumRackPanel from '../project/DrumRackPanel';
+import BeatBattlePage from '../beatbattle/BeatBattlePage';
 import PianoRollPanel, { PianoRollOpenButton, AddMidiTrackButton } from '../project/PianoRollPanel';
 import Sampler from '../instruments/Sampler';
 import SamplePackContentView from './SamplePackContentView';
@@ -246,6 +247,7 @@ export default function PluginLayout() {
   }, [sidebarWidth]);
   const [showSocial, setShowSocial] = useState(false);
   const [showMarketplace, setShowMarketplace] = useState(false);
+  const [showBeatBattle, setShowBeatBattle] = useState(false);
   const [showMessages, setShowMessages] = useState(false);
   const [chatCollapsed, setChatCollapsed] = useState(() => localStorage.getItem('ghost_chat_collapsed') !== '0');
   useEffect(() => {
@@ -524,6 +526,7 @@ export default function PluginLayout() {
     samplePackState.setSelectedPackId(null);
     setShowSocial(false);
     setShowMarketplace(false);
+    setShowBeatBattle(false);
     const proj = projects.find((p: any) => p.id === id);
     setIsBeatView((proj as any)?.projectType === 'beat');
     fetchProject(id);
@@ -652,7 +655,7 @@ export default function PluginLayout() {
     }
   };
 
-  type DockMode = 'home' | 'explore' | 'messages' | 'marketplace';
+  type DockMode = 'home' | 'explore' | 'messages' | 'marketplace' | 'beat-battle';
   const goTo = (mode: DockMode) => {
     if (selectedProjectId) {
       window.dispatchEvent(new CustomEvent('ghost-save-arrangement'));
@@ -665,8 +668,9 @@ export default function PluginLayout() {
     setShowSocial(mode === 'explore');
     setShowMessages(mode === 'messages');
     setShowMarketplace(mode === 'marketplace');
+    setShowBeatBattle(mode === 'beat-battle');
   };
-  const atHome = !selectedProjectId && !samplePackState.selectedPackId && !showSocial && !showMessages && !showMarketplace && !activeCommunityRoomId;
+  const atHome = !selectedProjectId && !samplePackState.selectedPackId && !showSocial && !showMessages && !showMarketplace && !showBeatBattle && !activeCommunityRoomId;
 
   // ── Render ──
 
@@ -718,6 +722,17 @@ export default function PluginLayout() {
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3 9h18l-1.5 10a2 2 0 0 1-2 1.8H6.5a2 2 0 0 1-2-1.8L3 9z" />
             <path d="M8 9V6a4 4 0 0 1 8 0v3" />
+          </svg>
+        </DockButton>
+
+        <DockButton title="Beat Battle" active={showBeatBattle} onClick={() => goTo('beat-battle')}>
+          {/* Game controller — Beat Battle entrypoint. Cluster of two
+              grips with a D-pad on the left and action buttons on the
+              right; same 1.5-stroke vector style as the other dock
+              icons so it sits in family. */}
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 10h2M7 9v2M16 10h.01M18 12h.01" />
+            <path d="M21.4 16.4a3 3 0 0 1-2.92 2.34h-.04a2 2 0 0 1-1.74-1.04l-1.3-2.31a2 2 0 0 0-1.74-1.04h-3.32a2 2 0 0 0-1.74 1.04l-1.3 2.31a2 2 0 0 1-1.74 1.04h-.04A3 3 0 0 1 2.6 16.4l1.74-7.9A4 4 0 0 1 8.26 5.4h7.48a4 4 0 0 1 3.92 3.1z" />
           </svg>
         </DockButton>
 
@@ -1200,6 +1215,8 @@ export default function PluginLayout() {
                     </p>
                   </div>
                 </div>
+              ) : showBeatBattle ? (
+                <BeatBattlePage />
               ) : (
                 <WelcomeHero
                   userName={user?.displayName}
