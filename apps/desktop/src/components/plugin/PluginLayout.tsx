@@ -539,7 +539,11 @@ export default function PluginLayout() {
     }
     closeCommunityRoom();
     if (id === '__beats__') {
-      const p = await createProject({ name: 'Untitled', projectType: 'beat' } as any);
+      // tempo + timeSig defaults so the grid + scheduler agree on a
+      // clock from the moment the project opens (server defaults to 0,
+      // which leaves several scheduler paths inactive and causes
+      // visible/audible drift against the 120-BPM fallback grid).
+      const p = await createProject({ name: 'Untitled', projectType: 'beat', tempo: 120, timeSignature: '4/4' } as any);
       await fetchProjects();
       setSelectedProjectId(p.id);
       samplePackState.setSelectedPackId(null);
@@ -568,7 +572,7 @@ export default function PluginLayout() {
 
   const handleCreateBeat = async () => {
     try {
-      const p = await createProject({ name: 'Untitled', projectType: 'beat' } as any);
+      const p = await createProject({ name: 'Untitled', projectType: 'beat', tempo: 120, timeSignature: '4/4' } as any);
       await fetchProjects();
       maybeShowInviteNudge(p.id, p.name);
       selectProject(p.id);
@@ -576,7 +580,7 @@ export default function PluginLayout() {
   };
 
   const handleCreate = async () => {
-    const p = await createProject({ name: 'Untitled' });
+    const p = await createProject({ name: 'Untitled', tempo: 120, timeSignature: '4/4' });
     await fetchProjects();
     maybeShowInviteNudge(p.id, p.name);
     selectProject(p.id);
