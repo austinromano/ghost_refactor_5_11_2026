@@ -4,6 +4,7 @@ import { useBeatBattle, type BattleParticipant, type BattleSubmissionMeta } from
 import { useBeatBattleOptOut, setBattleOptOut } from '../../hooks/useBeatBattleOptOut';
 import { clearBattleSubmitted } from '../../hooks/useBeatBattleSubmitted';
 import { useProjectStore } from '../../stores/projectStore';
+import { useAuthStore } from '../../stores/authStore';
 import { getSocket } from '../../lib/socket';
 
 // Beat Battle — Ghost Session's live producer competition mode.
@@ -156,33 +157,47 @@ export default function BeatBattlePage() {
   // lobby and the battle is still active) re-routes to the same project
   // instead of failing silently because the create was already done.
   const createProject = useProjectStore((s) => s.createProject);
+  // Scope the auto-open cache by userId so switching accounts on the
+  // same browser doesn't bleed one user's project id into the other
+  // user's session — the cached project wouldn't exist for them and
+  // PluginLayout's selection guard would clear it, dropping them on
+  // home instead of opening their own fresh project.
+  const currentUserId = useAuthStore((s) => s.user?.id ?? null);
   const autoOpenedRef = useRef<string | null>(null);
   useEffect(() => {
     // Opted-out spectators must NEVER get auto-pulled into a project
     // — that's the whole point of quitting. The lobby still renders
     // live state for them, but production transitions are read-only.
     if (status !== 'active' || !battle || optedOut) return;
+    if (!currentUserId) return; // wait until auth restores
     const sessionKey = `${battle.battleId}::${battle.startsAt ?? ''}`;
     if (autoOpenedRef.current === sessionKey) return;
     autoOpenedRef.current = sessionKey;
 
-    const persistedKey = 'beat-battle-auto-opened';
-    const persistedRaw = localStorage.getItem(persistedKey);
-    // Stored as `${sessionKey}|${projectId}`. If we recognise the
-    // session AND have a remembered projectId, just open it. Old-format
-    // entries (sessionKey only, no `|projectId`) are treated as stale
-    // and ignored — the user gets a fresh project they can actually
-    // navigate into.
-    if (persistedRaw && persistedRaw.startsWith(sessionKey + '|')) {
-      const existingId = persistedRaw.slice(sessionKey.length + 1);
-      if (existingId) {
-        window.dispatchEvent(new CustomEvent('ghost-open-project', { detail: { projectId: existingId } }));
-        return;
-      }
-    }
+    const persistedKey = `beat-battle-auto-opened::${currentUserId}`;
 
     (async () => {
       try {
+        // Try the cached projectId first — but validate it against
+        // the user's actual project list before dispatching. If the
+        // project was created by another account on this browser, or
+        // has since been deleted, the cleanup effect downstream would
+        // silently clear the selection and drop the user on home.
+        const persistedRaw = localStorage.getItem(persistedKey);
+        if (persistedRaw && persistedRaw.startsWith(sessionKey + '|')) {
+          const existingId = persistedRaw.slice(sessionKey.length + 1);
+          if (existingId) {
+            await useProjectStore.getState().fetchProjects();
+            const stillExists = useProjectStore.getState().projects.some((p) => p.id === existingId);
+            if (stillExists) {
+              window.dispatchEvent(new CustomEvent('ghost-open-project', { detail: { projectId: existingId } }));
+              return;
+            }
+            // Stale cache → fall through to fresh create.
+            try { localStorage.removeItem(persistedKey); } catch { /* quota */ }
+          }
+        }
+
         const name = `Beat Battle — ${battle.kit ?? 'Royale'}`;
         const p = await createProject({
           name,
@@ -191,6 +206,10 @@ export default function BeatBattlePage() {
           battleEndsAt: battle.endsAt,
         });
         localStorage.setItem(persistedKey, `${sessionKey}|${p.id}`);
+        // One-shot cleanup of the legacy unscoped key so multi-account
+        // browsers don't keep tripping over the stale cross-account
+        // projectId that used to live there.
+        try { localStorage.removeItem('beat-battle-auto-opened'); } catch { /* quota */ }
         window.dispatchEvent(new CustomEvent('ghost-open-project', { detail: { projectId: p.id } }));
       } catch (err) {
         // Reset the ref so the next render attempts again — without
@@ -200,7 +219,7 @@ export default function BeatBattlePage() {
         if (import.meta.env.DEV) console.warn('[BeatBattle] auto-open failed:', err);
       }
     })();
-  }, [status, optedOut, battle?.battleId, battle?.startsAt, battle?.endsAt, battle?.kit, createProject]);
+  }, [status, optedOut, currentUserId, battle?.battleId, battle?.startsAt, battle?.endsAt, battle?.kit, createProject]);
 
   const sendChat = () => {
     const trimmed = chatInput.trim();
