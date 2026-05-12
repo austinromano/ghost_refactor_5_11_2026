@@ -6,6 +6,10 @@ import { sendSessionAction } from '../lib/socket';
 import { pitchShiftRatio, clampPitch, clampVelocity } from '../lib/midiSchedule';
 import { getMidiTrackBus } from './audio/midiFxBus';
 import { api } from '../lib/api';
+import { coerceInstrument, makeInstrument } from './midi/instrument';
+import { buildSyncPayload } from './midi/sync';
+
+export { getMidiSyncSnapshot } from './midi/sync';
 
 // MIDI track / piano-roll store.
 //
@@ -245,82 +249,6 @@ export interface MidiSyncPayload {
   }>;
   clips: MidiClip[];
 }
-
-function buildSyncPayload(instruments: Record<string, MidiInstrument>, clips: MidiClip[]): MidiSyncPayload {
-  const out: MidiSyncPayload['instruments'] = {};
-  for (const [trackId, inst] of Object.entries(instruments)) {
-    out[trackId] = {
-      fileId: inst.fileId,
-      name: inst.name,
-      baseNote: inst.baseNote,
-      volume: inst.volume,
-      muted: inst.muted,
-      startOffset: inst.startOffset,
-      endOffset: inst.endOffset,
-      attackSec: inst.attackSec,
-      decaySec: inst.decaySec,
-      sustainLevel: inst.sustainLevel,
-      releaseSec: inst.releaseSec,
-    };
-  }
-  return { instruments: out, clips };
-}
-
-function payloadHasContent(p: MidiSyncPayload): boolean {
-  if (p.clips.length > 0) return true;
-  return Object.values(p.instruments).some((i) => !!i.fileId);
-}
-
-// Called by sessionStore when a peer sends `midi.request-state`. Same
-// shape as the drum rack snapshot helper — only reply when there's
-// real state to share so a late joiner with populated localStorage
-// doesn't get clobbered.
-export function getMidiSyncSnapshot(): MidiSyncPayload | null {
-  const s = useMidiTrack.getState();
-  const payload = buildSyncPayload(s.instruments, s.clips);
-  return payloadHasContent(payload) ? payload : null;
-}
-
-// Coerce a saved/remote instrument blob into a fully-shaped
-// MidiInstrument. Older saves (before the sampler params landed)
-// don't have startOffset / ADSR fields; migrate by filling in the
-// makeInstrument() defaults so playback still works on first load.
-function coerceInstrument(raw: any): MidiInstrument {
-  const def = makeInstrumentInternal();
-  return {
-    fileId: raw?.fileId ?? null,
-    name: typeof raw?.name === 'string' ? raw.name : def.name,
-    buffer: undefined,
-    baseNote: Number.isFinite(raw?.baseNote) ? raw.baseNote : def.baseNote,
-    volume: Number.isFinite(raw?.volume) ? raw.volume : def.volume,
-    muted: !!raw?.muted,
-    startOffset: Number.isFinite(raw?.startOffset) ? raw.startOffset : def.startOffset,
-    endOffset: Number.isFinite(raw?.endOffset) ? raw.endOffset : def.endOffset,
-    attackSec: Number.isFinite(raw?.attackSec) ? raw.attackSec : def.attackSec,
-    decaySec: Number.isFinite(raw?.decaySec) ? raw.decaySec : def.decaySec,
-    sustainLevel: Number.isFinite(raw?.sustainLevel) ? raw.sustainLevel : def.sustainLevel,
-    releaseSec: Number.isFinite(raw?.releaseSec) ? raw.releaseSec : def.releaseSec,
-  };
-}
-
-function makeInstrumentInternal(): MidiInstrument {
-  return {
-    fileId: null,
-    name: 'Empty',
-    baseNote: 60,         // C4 — Ableton Sampler's default
-    volume: 1,
-    muted: false,
-    startOffset: 0,
-    endOffset: 1,
-    attackSec: 0.005,     // ~5 ms — avoids click on fast attacks while
-    decaySec: 0,          //         keeping the sampler responsive
-    sustainLevel: 1,      // full sustain (one-shot pass-through)
-    releaseSec: 0.05,     // ~50 ms tail to soften note-off click
-  };
-}
-
-// Public alias preserved for the rest of the file's call sites.
-const makeInstrument = makeInstrumentInternal;
 
 export const useMidiTrack = create<MidiTrackState>((set, get) => ({
   open: false,
